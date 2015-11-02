@@ -17,7 +17,7 @@ type TESParams{RITType<:AbstractRIT}
 
     L       ::Float64   # inductance of SQUID (H)
     Rl      ::Float64   # Thevenin-equivalent resistance Rload = (Rshunt+Rparasitic)(ohms)
-    Rp      ::Float64   # Rparastic, Rshunt = Rl-Rparastici (ohms)
+    Rp      ::Float64   # Rparastic, Rshunt = Rl-Rparasitic (ohms)
     Rn      ::Float64   # normal resistance of TES (ohms)
 
     RIT     ::RITType   # RIT surface
@@ -31,6 +31,15 @@ type ShankRIT <: AbstractRIT
     A::Float64  # current dependence for R(T,I) (A/K^(3/2))
 end
 transitionwidth(RIT::ShankRIT)=RIT.Tw
+"Calculate `Tw` and `A` for a ShankRIT to have the given `alpha` and `beta` paramters
+when biased at resistane `R0`."
+function ShankRIT(alpha, beta, n, Tc, Tb, k, R0, Rn)
+    T0 = Tc /(1 + 3*beta/(2*alpha) - 2*(Rn-R0)/(Rn*alpha)*atanh(2*R0/Rn-1))
+    I0 = sqrt(k*(T0^n-Tbath^n)/R0)
+    Tw = T0*(Rn-R0)/(Rn*log(2)*alpha)
+    A = I0*(2*alpha/(3*T0*beta))^(3/2)
+    ShankRIT(Tw,A)
+end
 
 type BiasedTES{T}
     p::TESParams{T}
