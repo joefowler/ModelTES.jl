@@ -59,7 +59,7 @@ function initialconditions(p::TESParams, targetr)
    R00 = R(I00,T00,p)
    V00 = I00*(p.Rl+R00)
    # now evolve these conditions through integration to really lock themin
-   out = rk8(1000,1e-5, BiasedTES(p, I00, T00, V00), 0)
+   out = rk8(1000,1e-5, BiasedTES(p, I00, T00, V00),0)
    T0 = out.T[end]
    I0 = out.I[end]
    R0 = R(I0,T0,p)
@@ -271,10 +271,10 @@ function Base.call{S<:Float64}(bt::BiasedTES, t::Float64, y::AbstractVector{S}, 
              dI(I,T, bt.V, p.Rl, p.L, r)]
 end
 
-function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Vector{Float64}, npresamples::Int=0)
+function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Vector, npresamples::Int=0)
     out = Vector{TESRecord}(length(E))
     for i in 1:length(E)
-        out[i] = rk8(nstep, dt, bt, E[i], npresamples)
+        out[i] = rk8(nsample, dt, bt, E[i], npresamples)
     end
     out
 end
@@ -283,11 +283,11 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
     # Pair of differential equations y' = f(t,y), where y=[T,I]
     p = bt.p
     # Integrate pair of ODEs for all energies EE
-    TI = Array(Float64, 2, nsample)
-    y = Array(Float64, 2); ys = similar(y); work = Array(Float64, 14)
-    TI[1,:] = bt.T0+E*J_per_eV/p.C # set T0
-    TI[2,:] = bt.I0 # set I0
-    y[:] = TI[:,1]
+    TI = zeros(Float64, 2, nsample)
+    TI[1,1:npresamples] = bt.T0 # set T0 for presamples
+    TI[2,1:npresamples] = bt.I0 # set I0 for presamples
+    y = [bt.T0+E*J_per_eV/p.C, bt.I0]; ys = similar(y); work = Array(Float64, 14)
+
     for i = npresamples+1:nsample
         rk8!(bt, 0.0, dt, y, ys, work)
         TI[:, i] = ys
