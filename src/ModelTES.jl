@@ -1,8 +1,9 @@
 module ModelTES
-using PyPlot, Optim, Roots, ForwardDiff
-include("rk8.jl")
 export transitionwidth, BiasedTES, TESParams, getlinearparams, noise, noiseterms,
-TESRecord, times, rk8, Holmes48nH, IrwinHiltonTES
+TESRecord, times, rk8, Holmes48nH, IrwinHiltonTES, stochastic
+using Roots, ForwardDiff
+include("rk8.jl")
+
 
 abstract AbstractRIT
 # following Irwin-Hilton figure 3
@@ -136,7 +137,6 @@ function powertocurrent(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loo
 end
 function noiseterms(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega)
    xi = 1+2*beta #quadratic approximation
-   kb = 1.38064852e-23 #k boltzmann
    F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
    si = abs2(powertocurrent(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega))
    SItes = 4*kb*T0*I0^2*R0*xi/loopgain^2*(1+omega.^2*tauthermal).*si
@@ -160,7 +160,8 @@ type TESRecord
 end
 times(r::TESRecord) = range(0,r.dt,length(r.I))
 # conversion J/eV
-const J_per_eV = 1.602177e-19
+const J_per_eV = 1.602177e-19 #unitless
+const kb = 1.38064852e-23 #k boltzmann (J/K)
 
 # I want to re-write this code so that
 # A and Tw are the TES params, alpha and beta are derived
@@ -181,7 +182,6 @@ R(I,T, p::TESParams) = R(I,T, p.RIT, p.Tc, p.Rn)
 "thermal TES equation
 C*dT/dt = I^2*R - k*(T^n-Tbath^n)"
 function dT(I, T, k, n, Tbath, C, R)
-   I, T, k, n, Tbath, C, R
     Q=-k*(T^n-Tbath^n)+I^2*R
     Q/C
 end
@@ -192,6 +192,64 @@ function dI(I, T, V, Rl, L, R)
     (V-I*(Rl+R))/L
 end
 
+"Modify `dy` to contain "
+function stochasticdy!(dy,y,dt,bt::BiasedTES)
+   p=bt.p
+   T, I = y # tes tempertature, tes current
+   r = R(I,T,p) #res resistance
+   # generate random variables for use in stocastic integration
+   bath_thermal_noise, tes_thermal_noise, rl_johnson_noise, tes_johnson_noise = randn(4)
+
+   johnsontes = tes_johnson_noise*2*sqrt(kb*T*r/dt)
+   johnsonrl = rl_johnson_noise*2*sqrt(kb*p.Tbath*p.Rl/dt)
+
+   # k*T^n*dt/kb*T is the average number of phonons going from the TES to the bath
+   # assuming all phonons of energy kb*t
+   # sqrt(k*T^n*dt/kb*T) is the std deviation of the number of phonons
+   # the same reasoning applies in the other direction
+   dqdt = -p.k*(T^p.n-p.Tbath^p.n)+I^2*r +
+     tes_thermal_noise*sqrt(kb*p.k/dt)*T^(p.n/2 + 0.5) + # variation in number of phonon TES->bath
+     bath_thermal_noise*sqrt(kb*p.k/dt)*p.Tbath^(p.n/2+0.5) + # variation in number of phonon bath->TES
+     -I*johnsontes # work on the noise voltage source for the TES add/remove energy from the TES
+
+   # the resistors are modeled as noiseless resistors in parallel with
+   # voltage sources having white noise
+   # the load resistor is assumed to be at Tbath
+   ldidt = bt.V-I*(p.Rl+r) + johnsontes + johnsonrl
+
+   if isnan(dqdt)
+      @show dy, y, dt, bt
+      error()
+   end
+
+
+   dy[1] = dt*dqdt/p.C
+   dy[2] = dt*ldidt/p.L
+end
+
+"stochastic(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresample::Int=0, nrandomizingsample::Int=6000)
+Integrate a pulse record with with stocastic noise `E` eV with `nsample` total samples, `npresample` presamples, and use
+`nrandomizingsample` samples thrown away to ensure randomized starting `T0` and `I0`. Use `E=0` for noise records."
+function stochastic(nsample::Int, dt::Float64, bt, E::Number, npresample::Int=0, nrandomizingsample::Int=6000)
+   p = bt.p
+   TI = Array(Float64, 2, nsample)
+   y = [bt.T0, bt.I0]
+   dy = Array(Float64,2)
+   # manually implement euler's method for integration
+   for i = 1:nrandomizingsample # integrate for a while to get well randomized T0 and I0
+       stochasticdy!(dy,y,dt,bt)
+       y+=dy
+   end
+   for i = 1:nsample
+      if i == npresample+1
+         y[1]+=E*J_per_eV/p.C
+      end # increase temperature to start pulse
+      stochasticdy!(dy,y,dt,bt)
+      y+=dy
+      TI[:,i]=y
+   end
+   TESRecord(reshape(TI[1,:],(nsample,)),reshape(TI[2,:],(nsample,)),dt)
+end
 
 "Calling a BiasedTES gives the dI and dT terms for integration."
 function Base.call{S<:Float64}(bt::BiasedTES, t::Float64, y::AbstractVector{S}, dy::AbstractVector{S})
@@ -204,29 +262,29 @@ function Base.call{S<:Float64}(bt::BiasedTES, t::Float64, y::AbstractVector{S}, 
              dI(I,T, bt.V, p.Rl, p.L, r)]
 end
 
-function rk8(nstep::Int, dt::Float64, bt::BiasedTES, E::Vector{Float64})
+function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Vector{Float64}, npresamples::Int=0)
     out = Vector{TESRecord}(length(E))
     for i in 1:length(E)
-        out[i] = rk8(nstep, dt, bt, E[i])
+        out[i] = rk8(nstep, dt, bt, E[i], npresamples)
     end
     out
 end
 
-function rk8(nstep::Int, dt::Float64, bt::BiasedTES, E::Number)
+function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0)
     # Pair of differential equations y' = f(t,y), where y=[T,I]
     p = bt.p
     # Integrate pair of ODEs for all energies EE
-    TI = Array(Float64, 2, nstep+1)
+    TI = Array(Float64, 2, nsample)
     y = Array(Float64, 2); ys = similar(y); work = Array(Float64, 14)
-    TI[1,1] = bt.T0+E*J_per_eV/p.C # set T0
-    TI[2,1] = bt.I0 # set I0
+    TI[1,:] = bt.T0+E*J_per_eV/p.C # set T0
+    TI[2,:] = bt.I0 # set I0
     y[:] = TI[:,1]
-    for istep = 1:nstep
+    for i = npresamples+1:nsample
         rk8!(bt, 0.0, dt, y, ys, work)
-        TI[:, 1+istep] = ys
+        TI[:, i] = ys
         y[:] = ys
     end
-    TESRecord(reshape(TI[1,:],(nstep+1,)), reshape(TI[2,:], (nstep+1,)), dt)
+    TESRecord(reshape(TI[1,:],(nsample,)), reshape(TI[2,:], (nsample,)), dt)
 end
 
 Holmes48nH = TESParams(3.25, 0.1, 0.07, 2.33e-8, 0.5e-12, 48e-9, 0.3e-3, 0.0, 10e-3, ShankRIT(0.00056, 1.13))
