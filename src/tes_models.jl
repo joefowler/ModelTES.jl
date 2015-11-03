@@ -1,10 +1,10 @@
 using PyPlot, ModelTES
 
 """Return a BiasedTES object containing parameters for a HOLMES notional TES"""
-function pholmes(L)
+function pholmes(L, RbiasFraction=0.2)
     n = 3.25; Tc = 0.1; Tbath = 0.07
     k = 2.33e-8; C = 0.5e-12
-    R0 = 2e-3; Rl = 0.3e-3; Rn = 10e-3; Rpara=0.0
+    Rl = 0.3e-3; Rn = 10e-3; Rpara=0.0; R0=Rn*RbiasFraction
     alpha = 200.0; beta = 2.0
     model = ModelTES.ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn);
     tes_param = TESParams(n,Tc,Tbath,k,C,L,Rl,Rpara,Rn,model)
