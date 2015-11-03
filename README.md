@@ -10,38 +10,43 @@ Here is an example of what you can do
 
 ```julia
 using ModelTES, PyPlot
-# createa a Biased TES from the 48 nanohentry Holmes paramters with 0.2*Rn resistance
+# Create a a Biased TES from the 48 nanohentry Holmes paramters with 0.2*Rn resistance
+Holmes48nH = ModelTES.pholmes(48e-9)
+# Or: stdTES = ModelTES.highEpix()
 tes = BiasedTES(Holmes48nH, Holmes48nH.Rn*0.2)
-# createa a Biased TES from the 48 nanohentry Holmes paramters with 0.4*Rn resistance
+# Create a a Biased TES from the 48 nanohentry Holmes paramters with 0.4*Rn resistance
 tes2 = BiasedTES(Holmes48nH, Holmes48nH.Rn*0.4)
-# integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples
-out = rk8(12000,1e-7, tes, 1000, 2000)
-# integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples from the higher biased version of the same tes
-out2 = rk8(12000,1e-7, tes2, 1000, 2000)
-# get all the linear parameters for the irwin hilton model
+# Integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples
+out = rk8(12000,1e-7, tes, 1000, 2000);
+# Integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples from the higher biased version of the same tes
+out2 = rk8(12000,1e-7, tes2, 1000, 2000);
+# Get all the linear parameters for the irwin hilton model
 linearparams = getlinearparams(tes)
-# store them in an IrwinHiltonTES type
+# Store them in an IrwinHiltonTES type
 lintes = IrwinHiltonTES(linearparams...)
-# caulculate the noise and the 3 component terms in the IrwinHilton model
-f = logspace(0,6,100)
-n,n1,n2,n3 = noise(lintes, f)
+# Calculate the noise and the 4 components in the IrwinHilton model
+f = logspace(0,6,100);
+n,n1,n2,n3,n4 = noise(lintes, f);
 
 
-#calculate a stocastic noise 1000 eV pulse with 12000 samples and 2000 presmples
-outstochastic = stochastic(12000,1e-7, tes, 1000,2000)
+# Calculate a stochastic noise 1000 eV pulse with 12000 samples and 2000 presmples
+outstochastic = stochastic(12000,1e-7, tes, 1000,2000);
 
 figure()
 # same parameters, one noiseless, one with stocastic noise
-plot(times(out),out.I,".")
-plot(times(outstochastic),outstochastic.I,".")
+plot(1e3*times(out), 1e6*out.I,".k")
+plot(1e3*times(outstochastic), 1e6*outstochastic.I,".r")
+xlabel("Time (ms)"); ylabel("Current (\$\\mu\$A)");
 figure()
 title("pulses with different bias points")
-plot(times(out), out.I)
-plot(times(out2), out2.I)
+plot(1e3*times(out), 1e6*out.I)
+plot(1e3*times(out2), 1e6*out2.I)
+xlabel("Time (ms)"); ylabel("Current (\$\\mu\$A)");
 figure()
-loglog(f,n)
-loglog(f,n1,label="ites")
-loglog(f,n2,label="il")
-loglog(f,n3,label="itfn")
-legend()
+loglog(f,n1,label="TES electrical")
+loglog(f,n2,label="Load electrical")
+loglog(f,n3,label="Thermal fluctuation")
+loglog(f,n,label="Total noise PSD", lw=2)
+xlabel("Frequency (Hz)"); ylabel("Noise Power (A\$^2\$/Hz)")
+legend(loc="best")
 ```
