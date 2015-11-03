@@ -1,7 +1,7 @@
 module ModelTES
 export transitionwidth, BiasedTES, TESParams, getlinearparams,
     noise, ARMAmodel, ARMApowerspectrum,
-    TESRecord, times, rk8, Holmes48nH, IrwinHiltonTES, stochastic
+    TESRecord, times, rk8, IrwinHiltonTES, stochastic
 using Roots, ForwardDiff
 include("rk8.jl")
 include("tes_models.jl")
@@ -230,7 +230,8 @@ function ARMAmodel(tes::IrwinHiltonTES, T::Float64, SI_amp=5e-22)
     # Note that  2sigma/sqrt(2pi*T) is the "sigma" needed in ARMA noise generation.
     theta, phi, sigma
 end
-
+ARMAmodel(tes::BiasedTES, T::Float64, SI_amp::Float64=5e-22) =
+    ARMAmodel(IrwinHiltonTES(tes), T, SI_amp)
 
 "Compute the noise power spectrum for an ARMA model with MA coefficients `theta`,
 AR coefficients `phi`, and overall noise scale of `sigma.`  Use the sample time `T`
@@ -263,6 +264,7 @@ end
 type TESRecord
     T::Vector{Float64}  # temperature (K)
     I::Vector{Float64}  # current (A)
+    R::Vector{Float64}  # TES resistance (Ohm)
     dt::Float64   # seconds between samples (seconds)
 end
 times(r::TESRecord) = range(0,r.dt,length(r.I))
@@ -285,7 +287,7 @@ end
 
 
 "TES resistance model (Shank et al. 2014)"
-R(I, T, RIT::ShankRIT, Tc, Rn) = Rn/2*(1+tanh((T-Tc+(max(I,0.0)/RIT.A)^(2/3))/(2*log(2)*RIT.Tw)))
+R(I, T, RIT::ShankRIT, Tc, Rn) = Rn/2*(1+tanh((T-Tc+(max(I,0.0)/RIT.A).^(2/3))/(2*log(2)*RIT.Tw)))
 R(I,T, p::TESParams) = R(I,T, p.RIT, p.Tc, p.Rn)
 
 
@@ -398,7 +400,8 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
         TI[:, i] = ys
         y[:] = ys
     end
-    TESRecord(reshape(TI[1,:],(nsample,)), reshape(TI[2,:], (nsample,)), dt)
+    T,I = reshape(TI[1,:],(nsample,)), reshape(TI[2,:],(nsample,))
+    TESRecord(T, I, R(I,T,bt.p), dt)
 end
 
 end # module
