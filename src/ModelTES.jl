@@ -163,32 +163,6 @@ isoverdamped(tes::IrwinHiltonTES) = isreal(tes.tauplus) && isreal(tes.tauminus) 
 isunderdamped(tes::IrwinHiltonTES) = !isoverdamped(tes) && tes.tauplus!=tes.tauminus
 
 
-# function powertocurrent(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega)
-#    a = -1/I0/R0
-#    b = L/tauelectrical/R0/loopgain + (1-Rl/R0)
-#    c = im*L*tauthermal/R0/loopgain*(1/taucc+1/tauelectrical)
-#    d = -tauthermal*L/loopgain/R0
-#    -a.*(b.+omega.*c.+omega.^2.*d).^-1
-# end
-# function noiseterms(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega)
-#    xi = 1+2*beta #quadratic approximation
-#    F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
-#    si = abs2(powertocurrent(I0, T0, V, Rl, Tl, Tbath, L, R0, G0, C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus, omega))
-#    SItes = 4*kb*T0*I0^2*R0*xi/loopgain^2*(1+omega.^2*tauthermal).*si
-#    SIl   = 4*kb*Tl*I0^2*Rl*(loopgain-1)^2/loopgain^2*(1+omega.^2*taucc^2).*si
-#    SItfn = 4*kb*T0^2*G0*F*si
-#    SItes, SIl, SItfn
-# end
-# function noise(tes::IrwinHiltonTES, f)
-#    omega = 2*pi*f
-#    args = Any[getfield(tes, fieldname) for fieldname in fieldnames(tes)]
-#    push!(args,omega)
-#    SItes, SIl, SItfn = noiseterms(args...)
-#    SItes+SIl+SItfn, SItes, SIl, SItfn
-# end
-#
-
-
 "Returns (noise, A,B,C,D) where `noise` is a noise power spectral
 density in A^2 per Hz,
 
@@ -426,7 +400,5 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
     end
     TESRecord(reshape(TI[1,:],(nsample,)), reshape(TI[2,:], (nsample,)), dt)
 end
-
-Holmes48nH = TESParams(3.25, 0.1, 0.07, 2.33e-8, 0.5e-12, 48e-9, 0.3e-3, 0.0, 10e-3, ShankRIT(0.00056, 1.13))
 
 end # module
