@@ -10,21 +10,20 @@ You can input the amplifier current noise `SI_amp`, in A^2/Hz, or you
 can take the default value.
 "
 function noise(tes::IrwinHiltonTES, freq::Vector{Float64}, SI_amp=5e-22)
-    const kB = 1.38e-23 # Boltzmann
     const F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
-    SP_TFN = 4*kB*tes.T0^2*tes.G0*F
-    SV_TES = 4*kB*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
-    SV_L   = 4*kB*tes.T0*tes.Rl  # Load voltage noise
-    # SI_amp = 5e-22 # Amps^2/Hz
+    SP_TFN = 4*kb*tes.T0^2*tes.G0*F
+    SV_TES = 4*kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
+    SV_L   = 4*kb*tes.T0*tes.Rl  # Load voltage noise
 
     omega = 2*pi*freq  # Radians / sec
-    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+1im*omega*tes.tauplus).*(1+1im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
+    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+im*omega*tes.tauplus).*(1+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
     sIomeg2 = abs2(sIomeg)
 
-    Inoise_TFN = sIomeg2*SP_TFN
-    Inoise_amp = SI_amp
     Inoise_TES = SV_TES*tes.I0^2/tes.loopgain^2 * (1+(tes.tauthermal*omega).^2) .* sIomeg2
     Inoise_load = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2 * (1+(tes.taucc*omega).^2) .* sIomeg2
+    Inoise_TFN = SP_TFN*sIomeg2
+    Inoise_amp = SI_amp
+
     Inoise = Inoise_TFN+Inoise_amp+Inoise_TES+Inoise_load
     Inoise, Inoise_TES, Inoise_load, Inoise_TFN, Inoise_amp+zeros(Float64, length(Inoise))
 end
@@ -37,11 +36,10 @@ end
 to be used for approximating the noise as an ARMA(2,2) process, and `sigma`
 is the rms current (Amps)."
 function ARMAmodel(tes::IrwinHiltonTES, sampleTime::Float64, SI_amp=5e-22)
-    const kB = 1.38e-23 # Boltzmann
     const F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
-    SP_TFN = 4*kB*tes.T0^2*tes.G0*F
-    SV_TES = 4*kB*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
-    SV_L   = 4*kB*tes.T0*tes.Rl  # Load voltage noise
+    SP_TFN = 4*kb*tes.T0^2*tes.G0*F
+    SV_TES = 4*kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
+    SV_L   = 4*kb*tes.T0*tes.Rl  # Load voltage noise
 
     A = SI_amp
     B = abs2((1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc) /(tes.I0*tes.R0*(2+tes.beta)))

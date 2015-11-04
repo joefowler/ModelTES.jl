@@ -7,6 +7,8 @@ using Roots, ForwardDiff
 include("rk8.jl")
 include("tes_models.jl")
 
+const J_per_eV = 1.602177e-19 #unitless
+const kb = 1.38064852e-23 #k boltzmann (J/K)
 
 abstract AbstractRIT
 
@@ -165,6 +167,7 @@ isunderdamped(tes::IrwinHiltonTES) = !isoverdamped(tes) && tes.tauplus!=tes.taum
 
 include("TESNoise.jl")
 
+
 # -- Everything below here has something to do with stochastic modeling. So, wouldn't it make sense to
 # -- split it out into separate Julia file?
 
@@ -175,9 +178,7 @@ type TESRecord
     dt::Float64   # seconds between samples (seconds)
 end
 times(r::TESRecord) = range(0,r.dt,length(r.I))
-# conversion J/eV
-const J_per_eV = 1.602177e-19 #unitless
-const kb = 1.38064852e-23 #k boltzmann (J/K)
+
 
 # I want to re-write this code so that
 # A and Tw are the TES params, alpha and beta are derived
