@@ -6,6 +6,8 @@ using Roots, ForwardDiff
 include("rk8.jl")
 include("tes_models.jl")
 
+const J_per_eV = 1.602177e-19 #unitless
+const kb = 1.38064852e-23 #k boltzmann (J/K)
 
 abstract AbstractRIT
 
@@ -169,20 +171,17 @@ density in A^2 per Hz,
 You have to input the amplifier current noise, in A^2/Hz, or you can take the
 default value
 "
-function noise(tes::IrwinHiltonTES, freq::Vector{Float64}, SI_amp=5e-22)
-    const kB = 1.38e-23 # Boltzmann
+function noise(tes::IrwinHiltonTES, freq::Vector{Float64}, Inoise_amp=5e-22)
     const F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
-    SP_TFN = 4*kB*tes.T0^2*tes.G0*F
-    SV_TES = 4*kB*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
-    SV_L   = 4*kB*tes.T0*tes.Rl  # Load voltage noise
-    # SI_amp = 5e-22 # Amps^2/Hz
+    SP_TFN = 4*kb*tes.T0^2*tes.G0*F
+    SV_TES = 4*kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
+    SV_L   = 4*kb*tes.T0*tes.Rl  # Load voltage noise
 
     omega = 2*pi*freq  # Radians / sec
-    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+1im*omega*tes.tauplus).*(1+1im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
+    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+im*omega*tes.tauplus).*(1+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
     sIomeg2 = abs2(sIomeg)
 
-    Inoise_TFN = sIomeg2*SP_TFN
-    Inoise_amp = SI_amp
+    Inoise_TFN = SP_TFN*sIomeg2
     Inoise_TES = SV_TES*tes.I0^2/tes.loopgain^2 * (1+(tes.tauthermal*omega).^2) .* sIomeg2
     Inoise_load = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2 * (1+(tes.taucc*omega).^2) .* sIomeg2
     Inoise = Inoise_TFN+Inoise_amp+Inoise_TES+Inoise_load
@@ -197,11 +196,10 @@ end
 to be used for approximating the noise as an ARMA(2,2) process, and `sigma`
 is the rms current (Amps)."
 function ARMAmodel(tes::IrwinHiltonTES, T::Float64, SI_amp=5e-22)
-    const kB = 1.38e-23 # Boltzmann
     const F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
-    SP_TFN = 4*kB*tes.T0^2*tes.G0*F
-    SV_TES = 4*kB*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
-    SV_L   = 4*kB*tes.T0*tes.Rl  # Load voltage noise
+    SP_TFN = 4*kb*tes.T0^2*tes.G0*F
+    SV_TES = 4*kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
+    SV_L   = 4*kb*tes.T0*tes.Rl  # Load voltage noise
 
     A = SI_amp
     B = abs2((1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc) /(tes.I0*tes.R0*(2+tes.beta)))
@@ -268,9 +266,7 @@ type TESRecord
     dt::Float64   # seconds between samples (seconds)
 end
 times(r::TESRecord) = range(0,r.dt,length(r.I))
-# conversion J/eV
-const J_per_eV = 1.602177e-19 #unitless
-const kb = 1.38064852e-23 #k boltzmann (J/K)
+
 
 # I want to re-write this code so that
 # A and Tw are the TES params, alpha and beta are derived
