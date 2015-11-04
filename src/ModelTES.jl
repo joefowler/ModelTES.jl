@@ -343,7 +343,8 @@ Integrate a pulse record with with stocastic noise `E` eV with `nsample` total s
 `nrandomizingsample` samples thrown away to ensure randomized starting `T0` and `I0`. Use `E=0` for noise records."
 function stochastic(nsample::Int, dt::Float64, bt, E::Number, npresample::Int=0, nrandomizingsample::Int=6000)
    p = bt.p
-   TI = Array(Float64, 2, nsample)
+   T = Array(Float64, nsample)
+   I = Array(Float64, nsample)
    y = [bt.T0, bt.I0]
    dy = Array(Float64,2)
    # manually implement euler's method for integration
@@ -357,9 +358,10 @@ function stochastic(nsample::Int, dt::Float64, bt, E::Number, npresample::Int=0,
       end # increase temperature to start pulse
       stochasticdy!(dy,y,dt,bt)
       y+=dy
-      TI[:,i]=y
+      T[i] = y[1]
+      I[i] = y[2]
    end
-   TESRecord(reshape(TI[1,:],(nsample,)),reshape(TI[2,:],(nsample,)),dt)
+   TESRecord(T,I,R(I,T,bt.p),dt)
 end
 
 
@@ -386,17 +388,17 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
     # Pair of differential equations y' = f(t,y), where y=[T,I]
     p = bt.p
     # Integrate pair of ODEs for all energies EE
-    TI = zeros(Float64, 2, nsample)
-    TI[1,1:npresamples] = bt.T0 # set T0 for presamples
-    TI[2,1:npresamples] = bt.I0 # set I0 for presamples
+    T = Array(Float64, nsample)
+    I = Array(Float64, nsample)
+    T[1:npresamples], I[1:npresamples] = bt.T0, bt.I0 # set T0, I0 for presamples
     y = [bt.T0+E*J_per_eV/p.C, bt.I0]; ys = similar(y); work = Array(Float64, 14)
 
     for i = npresamples+1:nsample
         rk8!(bt, 0.0, dt, y, ys, work)
-        TI[:, i] = ys
         y[:] = ys
+        T[i] = y[1]
+        I[i] = y[2]
     end
-    T,I = reshape(TI[1,:],(nsample,)), reshape(TI[2,:],(nsample,))
     TESRecord(T, I, R(I,T,bt.p), dt)
 end
 
