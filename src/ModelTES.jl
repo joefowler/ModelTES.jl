@@ -1,6 +1,7 @@
 module ModelTES
 export transitionwidth, BiasedTES, TESParams, getlinearparams,
-    noise, ARMAmodel, ARMApowerspectrum,
+    noise, ARMAmodel, ARMApowerspectrum, ARMAcovariance,
+    generateARMAnoise,
     TESRecord, times, rk8, IrwinHiltonTES, stochastic
 using Roots, ForwardDiff
 include("rk8.jl")
@@ -164,96 +165,7 @@ end
 isoverdamped(tes::IrwinHiltonTES) = isreal(tes.tauplus) && isreal(tes.tauminus) && tes.tauplus<tes.tauminus
 isunderdamped(tes::IrwinHiltonTES) = !isoverdamped(tes) && tes.tauplus!=tes.tauminus
 
-
-"Returns (noise, A,B,C,D) where `noise` is a noise power spectral
-density in A^2 per Hz,
-
-You have to input the amplifier current noise, in A^2/Hz, or you can take the
-default value
-"
-function noise(tes::IrwinHiltonTES, freq::Vector{Float64}, Inoise_amp=5e-22)
-    const F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
-    SP_TFN = 4*kb*tes.T0^2*tes.G0*F
-    SV_TES = 4*kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
-    SV_L   = 4*kb*tes.T0*tes.Rl  # Load voltage noise
-
-    omega = 2*pi*freq  # Radians / sec
-    sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+im*omega*tes.tauplus).*(1+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
-    sIomeg2 = abs2(sIomeg)
-
-    Inoise_TFN = SP_TFN*sIomeg2
-    Inoise_TES = SV_TES*tes.I0^2/tes.loopgain^2 * (1+(tes.tauthermal*omega).^2) .* sIomeg2
-    Inoise_load = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2 * (1+(tes.taucc*omega).^2) .* sIomeg2
-    Inoise = Inoise_TFN+Inoise_amp+Inoise_TES+Inoise_load
-    Inoise, Inoise_TES, Inoise_load, Inoise_TFN, Inoise_amp+zeros(Float64, length(Inoise))
-end
-
-
-"Returns noise of an IrwinHiltonTES modeled as an ARMA(2,2) process as
-(theta,phi,sigma).
-
-`theta` and `phi` are the coefficients of the MA(2) and AR(2) polynomials
-to be used for approximating the noise as an ARMA(2,2) process, and `sigma`
-is the rms current (Amps)."
-function ARMAmodel(tes::IrwinHiltonTES, T::Float64, SI_amp=5e-22)
-    const F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
-    SP_TFN = 4*kb*tes.T0^2*tes.G0*F
-    SV_TES = 4*kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
-    SV_L   = 4*kb*tes.T0*tes.Rl  # Load voltage noise
-
-    A = SI_amp
-    B = abs2((1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc) /(tes.I0*tes.R0*(2+tes.beta)))
-    C = SP_TFN
-    D = SV_TES*tes.I0^2/tes.loopgain^2
-    E = SV_L*tes.I0^2*(tes.loopgain-1)^2/tes.loopgain^2
-
-    # (u,v) are the solutions to the quadratic equation ax^2+bx+c=0
-    a = A * (tes.tauplus*tes.tauminus)^2
-    b = -(A*(tes.tauplus^2+tes.tauminus^2)+B*(D*tes.tauthermal^2+E*tes.taucc^2))
-    c = A+B*(C+D+E)
-    discr = sqrt(b^2-4a*c)
-    u2 = (-b-discr)/(2a)
-    v2 = (-b+discr)/(2a)
-
-    u,v = sqrt(u2), sqrt(v2)
-    K = sqrt(a)
-    theta = [(T*u*.5+1)*(T*v*0.5+1), T^2*u*v*.5-2, (T*u*.5-1)*(T*v*.5-1)]
-    phi = [(2tes.tauplus/T+1)*(2tes.tauminus/T+1), 2-8tes.tauplus*tes.tauminus/T^2, (1-2tes.tauplus/T)*(1-2tes.tauminus/T)]
-
-    # Rescale so that theta and phi have unit coefficients for the z^0 terms.
-    sigma = theta[1]/phi[1]*4K/(T^2)
-    theta ./= theta[1]
-    phi ./= phi[1]
-
-    # Note that  2sigma/sqrt(2pi*T) is the "sigma" needed in ARMA noise generation.
-    theta, phi, sigma
-end
-ARMAmodel(tes::BiasedTES, T::Float64, SI_amp::Float64=5e-22) =
-    ARMAmodel(IrwinHiltonTES(tes), T, SI_amp)
-
-"Compute the noise power spectrum for an ARMA model with MA coefficients `theta`,
-AR coefficients `phi`, and overall noise scale of `sigma.`  Use the sample time `T`
-(seconds) and compute PSD at (natural, not angular) frequencies `freq` (Hz).
-
-Note that `p1` and `p2` should be roughly the same in the following
-SI_amp = 8e-22
-freq = logspace(1,6,50)
-T = 0.5/freq[end]
-(theta,phi,sigma) = ARMAmodel(tes, T, SI_amp)
-p1 = ARMApowerspectrum(theta, phi, sigma, freq, T)
-p2 = noise(tes, freq, SI_amp)
-"
-function ARMApowerspectrum(theta::Vector, phi::Vector, sigma::Float64, freq::Vector, T::Float64)
-    # Normalize the coefficients
-    sigma *= theta[1]/phi[1]
-    theta = theta / theta[1]
-    phi = phi / phi[1]
-
-    omega_digital = 2*pi*freq*T # Proportional to freq, and =pi at the Nyquist frequency
-    z = exp(-1im*omega_digital)
-    Inoise = sigma^2*abs2((1+theta[2]*z+theta[3]*(z .^2)) ./ (1+phi[2]*z+phi[3]*(z .^2)))
-end
-
+include("TESNoise.jl")
 
 
 # -- Everything below here has something to do with stochastic modeling. So, wouldn't it make sense to
