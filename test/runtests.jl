@@ -4,6 +4,9 @@ using Base.Test
 using ModelTES
 # Create a high-E TES design
 stdTES = ModelTES.highEpix()
+iv_pt = ModelTES.iv_point(stdTES.p, stdTES.V)
+iv_curve = ModelTES.iv_curve(stdTES.p, stdTES.V*collect(0:0.1:10))
+@show iv_curve
 # Create a Biased TES from the 48 nanohentry Holmes paramters with 0.2*Rn resistance
 tes = ModelTES.pholmes(48e-9, 0.20)
 # Create a Biased TES from the 48 nanohentry Holmes paramters with 0.4*Rn resistance

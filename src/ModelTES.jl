@@ -2,8 +2,8 @@ module ModelTES
 export transitionwidth, BiasedTES, TESParams, getlinearparams,
     noise, ARMAmodel, ARMApowerspectrum, ARMAcovariance,
     generateARMAnoise,
-    TESRecord, times, rk8, IrwinHiltonTES, stochastic
-using Roots, ForwardDiff
+    TESRecord, times, rk8, IrwinHiltonTES, stochastic, adaptive_solve
+using Roots, ForwardDiff, DifferentialEquations
 include("rk8.jl")
 include("tes_models.jl")
 
@@ -23,7 +23,8 @@ type TESParams{RITType<:AbstractRIT}
 
     L       ::Float64   # inductance of SQUID (H)
     Rl      ::Float64   # Thevenin-equivalent resistance Rload = (Rshunt+Rparasitic)(ohms)
-    Rp      ::Float64   # Rparastic, Rshunt = Rl-Rparasitic (ohms)
+                        # note Ibias = V/Rshunt
+    Rp      ::Float64   # Rparastic; Rshunt = Rl-Rparasitic (ohms)
     Rn      ::Float64   # normal resistance of TES (ohms)
 
     RIT     ::RITType   # RIT surface
@@ -51,10 +52,13 @@ end
 
 type BiasedTES{T}
     p::TESParams{T}
-    I0::Float64 # intial current for diff eq (A)
-    T0::Float64 # initial temperature for diff equations (K)
+    I0::Float64 # intial current for diff eq, aka current through TES (A)
+    T0::Float64 # initial temperature for diff equations, aka temperature of TES (K)
     V ::Float64 # thevinen equivalent voltage V = I0*(p.Rl+p.R0), R0=quiescent resistance
 end
+
+
+
 
 
 "For a given T0, the difference R-targetR. Use to solve numerically for T0."
@@ -71,6 +75,7 @@ function initialconditions(p::TESParams, targetR)
    R00 = R(I00,T00,p)
    V00 = I00*(p.Rl+R00)
    # now evolve these conditions through integration to really lock them in.
+   # shouldn't hard code step size here
    out = rk8(1000,1e-5, BiasedTES(p, I00, T00, V00), 0)
    T0 = out.T[end]
    I0 = out.I[end]
@@ -85,6 +90,35 @@ function BiasedTES{T<:ShankRIT}(p::TESParams{T}, R0::Float64)
    @assert 0 < R0 < p.Rn
    I0, T0, V = initialconditions(p,R0)
    BiasedTES(p,I0,T0,V)
+end
+
+function iv_point(p::TESParams, V)
+    I00 = V/p.Rn
+    # don't hardcode time steps
+    out = rk8(8000,4e-5, BiasedTES(p, I00, p.Tc, V), 0)
+    # out = adaptive_solve(5000,1e-4, BiasedTES(p, I00, p.Tc, V), 0)
+    # @assert (out.I[end]-out.I[end-1])<1e-13
+    @assert (out.T[end]-out.T[end-1])<1e-9
+    # @assert (out.R[end]-out.R[end-1])<1e-9
+    T0 = out.T[end]
+    I0 = out.I[end]
+    R0 = R(I0,T0,p)
+    V = I0*(p.Rl+R0)
+    I0,T0,R0,V
+end
+function iv_curve(p::TESParams, Vs)
+    Is=Vector{Float64}(length(Vs))
+    Ts=Vector{Float64}(length(Vs))
+    Rs=Vector{Float64}(length(Vs))
+    Vs_out=Vector{Float64}(length(Vs))
+    for i in eachindex(Vs)
+            I,T,R,V = iv_point(p,Vs[i])
+            Is[i]=I
+            Ts[i]=T
+            Rs[i]=R
+            Vs_out[i]=V
+    end
+    Is,Ts,Rs,Vs_out
 end
 
 
@@ -105,8 +139,7 @@ function getlinearparams(bt::BiasedTES)
    p = bt.p
    R0 = getR0(bt)
    G0 = getG0(bt)
-   g = ForwardDiff.gradient(f)
-   drdi,drdt = g([bt.I0, bt.T0])
+   drdi,drdt = ForwardDiff.gradient(f,[bt.I0, bt.T0])
    alpha = drdt*bt.T0/R0
    beta = drdi*bt.I0/R0
    PJ = bt.I0^2*R0
@@ -278,12 +311,12 @@ end
 
 
 "Calling a BiasedTES gives the dI and dT terms for integration."
-function Base.call{S<:Float64}(bt::BiasedTES, t::Float64, y::AbstractVector{S}, dy::AbstractVector{S})
+function (bt::BiasedTES){S<:Float64}(t::Float64, y::AbstractVector{S}, dy::AbstractVector{S})
     T,I = y[1],y[2]
     p = bt.p
     r = R(I,T,p)
-    dT(I, T, p.k, p.n, p.Tbath, p.C, r)
-    dI(I,T, bt.V, p.Rl, p.L, r)
+    # dT(I, T, p.k, p.n, p.Tbath, p.C, r)
+    # dI(I,T, bt.V, p.Rl, p.L, r)
     dy[:] = [dT(I, T, p.k, p.n, p.Tbath, p.C, r),
              dI(I,T, bt.V, p.Rl, p.L, r)]
 end
@@ -312,6 +345,30 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
         I[i] = y[2]
     end
     TESRecord(T, I, R(I,T,bt.p), dt)
+end
+
+# example of using the DifferentialEquations API to solve the relevant equations
+function adaptive_solve(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, nresamples::Int=0)
+    p=bt.p
+    nsample=1000
+    dt = 1e-3
+    E = 1000.
+    p = bt.p
+    # u = [T,I]
+    u0 = [bt.T0+E*ModelTES.J_per_eV/p.C, bt.I0]
+    function du(t,u)
+        T,I = u[1],u[2]
+        p = bt.p
+        r = R(I,T,p)
+        [dT(I, T, p.k, p.n, p.Tbath, p.C, r),
+                 dI(I,T, bt.V, p.Rl, p.L, r)]
+    end
+    prob = ODEProblem(du, u0, (0.0,nsample*dt))
+    sol = solve(prob,DifferentialEquations.Vern8(),dt=1e-9,abstol=1e-11,reltol=1e-11)
+    out =  sol(0:dt:(nsample-1)*dt);
+    T=[o[1] for o in out];
+    I=[o[2] for o in out];
+    ModelTES.TESRecord(T,I, R(I,T,bt.p),dt)
 end
 
 end # module
