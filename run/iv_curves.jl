@@ -1,4 +1,4 @@
-using ModelTES#, Plots
+using ModelTES, Roots#, Plots
 using PyPlot
 #pyplot() #make Plots use pyplot backend
 using PyCall
@@ -14,53 +14,56 @@ function highEpixHighBeta()
     bt = BiasedTES(tes_param, R0)
 end
 
-
-
 pixel = highEpixHighBeta()
 
 iv_pt = ModelTES.iv_point(pixel.p, pixel.V);
 IV_Vs = pixel.V*collect(0.05:0.05:5);
 I,T,R,V = ModelTES.iv_curve(pixel.p, IV_Vs);
 
-"calculates T given R and I and the thermal paramters"
-function getTgivenRandI(pixel,R,I)
-    k = pixel.p.k
-    n = pixel.p.n
-    Tbath = pixel.p.Tbath
-    # I^2*R=k(T^n-Tb^n)
-    Tn = Tbath^n-I^2*R/k
-    T=Tn^(1/n)
-end
-
-using Roots
-function getRITgivenV(pixel,V)
-
-    Rl = pixel.p.Rl
-    # V=I*(R+Rl)
-    fzero((t)->getR0error(t, targetR,p),p.Tc-10*transitionwidth(p), p.Tc+10*transitionwidth(p))
-
-
-Tgot = getTgivenRandI(pixel,R[1],I[1])
-@show Tgot-T[1]
-
-
-
-function iv_point_from_T(pixel,T, Iguess=1e-6)
-    k = pixel.p.k
-    n = pixel.p.n
-    Tbath = pixel.p.Tbath
-    Rl = pixel.p.Rl
-    function thermal(I)
-        R = ModelTES.R(I,T,pixel.p)
-        I^2*R-k*(T^n-Tbath^n)
+function iv_point_from_T(p::TESParams,T, Iguess=1e-6)
+    @show p.Tbath, T
+    k = p.k
+    n = p.n
+    Tbath = p.Tbath
+    Rl = p.Rl
+    if Tbath!=T
+        function thermal(I)
+            R = ModelTES.R(I,T,p)
+            I^2*R-k*(T^n-Tbath^n)
+        end
+        I = fzero(thermal, Iguess, [0, 1])
+    else
+        I=0.0
     end
-    I = fzero(thermal, Iguess, [0, 1])
-    R = ModelTES.R(I,T,pixel.p)
+    R = ModelTES.R(I,T,p)
     V=I*(R+Rl)
     I,T,R,V
 end
 
-iv_point_from_T(pixel,0.106)
+function iv_curve_from_Ts(p::TESParams, Tmax, n)
+    Ts = linspace(p.Tbath, Tmax,n)
+    Is=Vector{Float64}(length(Ts))
+    Ts_out=Vector{Float64}(length(Ts))
+    Rs=Vector{Float64}(length(Ts))
+    Vs=Vector{Float64}(length(Ts))
+    for i in eachindex(Ts)
+            I,T,R,V = iv_point_from_T(p,Ts[i])
+            Is[i]=I
+            Ts_out[i]=T
+            Rs[i]=R
+            Vs[i]=V
+    end
+    Is,Ts_out,Rs,Vs
+end
+
+Ts = 0.05:0.0005:0.15
+iv_point_from_T(pixel.p,0.106)
+Is, Ts, Rs, Vs = iv_curve_from_Ts(pixel.p, 0.15, 100)
+Vtess = Vs-Is*pixel.p.Rl;
+Ps = Vtess.*Is;
+
+figure()
+plot(Ps, Rs)
 
 
 # I: current in TES
@@ -74,8 +77,8 @@ Vtes = V-I*pixel.p.Rl;
 # ylabel!("Ites (Amps)")
 # title!("Tb = $(pixel.p.Tbath) K")
 
-pulserecord = ModelTES.rk8(4000,1e-5,pixel,6000)
-
+# pulserecord = ModelTES.rk8(4000,1e-5,pixel,6000)
+#
 Tbaths = 0.05:0.005:0.11
 params = deepcopy(pixel.p)
 Is = zeros(length(IV_Vs), length(Tbaths));
@@ -84,7 +87,7 @@ Vs = zeros(length(IV_Vs), length(Tbaths));
 Rs = zeros(length(IV_Vs), length(Tbaths));
 for (i,Tb) in enumerate(Tbaths)
     params.Tbath=Tb
-    I,T,R,V = ModelTES.iv_curve(params, IV_Vs)
+    I,T,R,V = iv_curve_from_Ts(params, 0.15, 100)
     Is[:,i]=I
     Ts[:,i]=T
     Rs[:,i]=R

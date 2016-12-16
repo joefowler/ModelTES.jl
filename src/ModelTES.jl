@@ -39,7 +39,6 @@ end
 transitionwidth(RIT::ShankRIT)=RIT.Tw
 transitionwidth(p::TESParams)=transitionwidth(p.RIT)
 
-
 "Constructor that fixes `Tw` and `A` for a ShankRIT to have the given `alpha` and `beta`
 parameters when biased at resistance `R0`."
 function ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn)
