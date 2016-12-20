@@ -8,20 +8,65 @@ function highEpixHighBeta()
     Tc=0.107; Tbath = 0.065
     R0 = 1.55e-3; Rl = 0.35e-3; Rn = 10.3e-3; Rpara=0.0
     n=3.3; k = 3.50e-9; C = 0.72e-12
-    alpha = 92.0; beta = 5; L=300e-9
+    alpha = 92.0; beta = 1.5; L=300e-9
     model = ModelTES.ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn);
     tes_param = TESParams(n,Tc,Tbath,k,C,L,Rl,Rpara,Rn,model)
     bt = BiasedTES(tes_param, R0)
 end
 
 pixel = highEpixHighBeta()
+params=pixel.p
 
 iv_pt = ModelTES.iv_point(pixel.p, pixel.V);
 IV_Vs = pixel.V*collect(0.05:0.05:5);
 I,T,R,V = ModelTES.iv_curve(pixel.p, IV_Vs);
 
+function iv_point_from_I(p::TESParams,I)
+    k = p.k
+    n = p.n
+    Tbath = p.Tbath
+    Rl = p.Rl
+    function thermal(T)
+        R = ModelTES.R(I,T,p)
+        I^2*R-k*(T^n-Tbath^n)
+    end
+    T = fzero(thermal, p.Tc)
+    R = ModelTES.R(I,T,p)
+    V=I*(R+Rl)
+    I,T,R,V
+end
+function iv_curve_from_Is(p::TESParams, Is)
+    Is_out = Vector{Float64}(length(Is))
+    Ts=Vector{Float64}(length(Is))
+    Rs=Vector{Float64}(length(Is))
+    Vs=Vector{Float64}(length(Is))
+    for i in eachindex(Is)
+            I,T,R,V = iv_point_from_T(p,Is[i])
+            Is_out[i]=I
+            Ts[i]=T
+            Rs[i]=R
+            Vs[i]=V
+    end
+    Is_out,Ts,Rs,Vs
+end
+function iv_curves_from_Is(p::TESParams, Tbaths, Is)
+    params = deepcopy(p)
+    Is = zeros(length(IV_Vs), length(Tbaths));
+    Ts = zeros(length(IV_Vs), length(Tbaths));
+    Vs = zeros(length(IV_Vs), length(Tbaths));
+    Rs = zeros(length(IV_Vs), length(Tbaths));
+    for (i,Tb) in enumerate(Tbaths)
+        params.Tbath=Tb
+        I,T,R,V = iv_curve_from_Ts(params, Is)
+        Is[:,i]=I
+        Ts[:,i]=T
+        Rs[:,i]=R
+        Vs[:,i]=V
+    end
+    return Is, Ts, Rs, Vs
+end
+
 function iv_point_from_T(p::TESParams,T, Iguess=1e-6)
-    @show p.Tbath, T
     k = p.k
     n = p.n
     Tbath = p.Tbath
@@ -41,7 +86,7 @@ function iv_point_from_T(p::TESParams,T, Iguess=1e-6)
 end
 
 function iv_curve_from_Ts(p::TESParams, Tmax, n)
-    Ts = linspace(p.Tbath, Tmax,n)
+    Ts = linspace(p.Tbath+0.005, Tmax,n)
     Is=Vector{Float64}(length(Ts))
     Ts_out=Vector{Float64}(length(Ts))
     Rs=Vector{Float64}(length(Ts))
@@ -55,15 +100,78 @@ function iv_curve_from_Ts(p::TESParams, Tmax, n)
     end
     Is,Ts_out,Rs,Vs
 end
+function iv_curves_from_Ts(p::TESParams, Tbaths, Tmax, n)
+    params = deepcopy(p)
+    Is = zeros(n, length(Tbaths));
+    Ts = zeros(n, length(Tbaths));
+    Vs = zeros(n, length(Tbaths));
+    Rs = zeros(n, length(Tbaths));
+    for (i,Tb) in enumerate(Tbaths)
+        params.Tbath=Tb
+        I,T,R,V = iv_curve_from_Ts(params, Tmax,n)
+        Is[:,i]=I
+        Ts[:,i]=T
+        Rs[:,i]=R
+        Vs[:,i]=V
+    end
+    return Is, Ts, Rs, Vs
+end
 
+#IVs from Ts
 Ts = 0.05:0.0005:0.15
+Tbaths = 0.05:0.005:0.12
 iv_point_from_T(pixel.p,0.106)
-Is, Ts, Rs, Vs = iv_curve_from_Ts(pixel.p, 0.15, 100)
-Vtess = Vs-Is*pixel.p.Rl;
-Ps = Vtess.*Is;
+Is1, Ts1, Rs1, Vs1 = iv_curve_from_Ts(pixel.p, 0.15, 100)
+Is, Ts, Rs, Vs = iv_curves_from_Ts(pixel.p, Tbaths, 0.15, 1000)
+Vtess1 = Vs1-Is1*pixel.p.Rl;
+Ps1 = Vtess1.*Is1;
+Vtess = Vs-Is*pixel.p.Rl
+Ps = Vtess.*Is
+
+figure()
+cmap = matplotlib[:cm][:get_cmap]("Reds")
+xlim(0,0.0001)
+ylim(0.095,0.11)
+xlabel("current (A)")
+ylabel("temperature (K)")
+@pyimport scipy.interpolate as spinterpoplate
+RIT  = spinterpoplate.interp2d(Is, Ts, Rs)
+Inew = linspace(xlim()[1],xlim()[2],500)
+Tnew = linspace(ylim()[1],ylim()[2],500)
+IInew,TTnew=np.meshgrid(Inew,Tnew)
+Rnew = RIT(Inew[:],Tnew[:])
+cmap2 = matplotlib[:cm][:get_cmap]("Blues")
+scatter(IInew[:],TTnew[:], color=cmap2(2*Rnew[:]/params.Rn))
+scatter(Is[:],Ts[:],color=cmap(2*Rs[:]/params.Rn))
+
+# imshow(cmap2(2*Rnew/params.Rn), extent = (xlim()[1], xlim()[2], ylim()[1], ylim()[2]))
+#IVs from Is
+Is = 0:1e-5:1e-3
+iv_point_from_I(pixel.p, 1e-4)
+iv_curve_from_Is(pixel.p, Is)
+
 
 figure()
 plot(Ps, Rs)
+
+@pyimport scipy.interpolate as spinterpoplate
+function iv_point_from_data_RIT(Rdata,Idata,Tdata, k, n, Tbath, Rl, T, Iguess=1e-6)
+    RIT = spinterpoplate.interp2d(Idata, Tdata, Rdata)
+    function thermal(I)
+       @show R = RIT(I,T)[]
+       @show R2 = ModelTES.R(I,T,params)
+       @show I^2*R-k*(T^n-Tbath^n)
+    end
+    I = fzero(thermal, Iguess, [0, 1])
+    R=RIT(I,T)[]
+    V=I*(R+Rl)
+    I,T,R,V
+end
+
+iv_point_from_data_RIT(Rs, Is, Ts, params.k, params.n, Tbaths[1], params.Rl, params.Tc )
+
+
+
 
 
 # I: current in TES
@@ -174,6 +282,8 @@ T_chosen_ind=1
 fitT = curve_fit(model, Tbaths[use_inds], P_interpT[use_inds,T_chosen_ind]*1e12, [params.Tc, 1000, 3])
 TfitT, kfitT, nfitT = fitT.param
 
+
+
 # p5 = plot(Tbaths, P_interpT*1e12,lab=map(repr, Ts_chosen'),w=2)
 # plot!(Tbaths[use_inds], model(Tbaths[use_inds], fit.param), lab="fit",style=:dash,w=2)
 # xlabel!("T_{bath} (K)")
@@ -185,6 +295,10 @@ Ps+=1e-30
 TrecalcT = [TfromTb(Tbaths[q], Ps[i,q]*1e12, kfitT, nfitT) for i in 1:size(Ps,1), q in 1:size(Ps,2)]
 TrecalcR = [TfromTb(Tbaths[q], Ps[i,q]*1e12, kfit, nfit) for i in 1:size(Ps,1), q in 1:size(Ps,2)]
 
+function iv_curve_residual(k,n,I,Vtes,Tbath)
+    P = I*Vtes
+    Tcalc = TfromTb(Tbath, P, k, n)
+    Rcalc = ModelTES.RIT()
 
 
 Ts_chosen_2 = [params.Tc-params.RIT.Tw, params.Tc, params.Tc+params.RIT.Tw]

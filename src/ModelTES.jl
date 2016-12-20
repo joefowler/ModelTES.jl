@@ -347,17 +347,12 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
 end
 
 # example of using the DifferentialEquations API to solve the relevant equations
-function adaptive_solve(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, nresamples::Int=0)
-    p=bt.p
-    nsample=1000
-    dt = 1e-3
-    E = 1000.
+function adaptive_solve(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0)
     p = bt.p
     # u = [T,I]
     u0 = [bt.T0+E*ModelTES.J_per_eV/p.C, bt.I0]
     function du(t,u)
         T,I = u[1],u[2]
-        p = bt.p
         r = R(I,T,p)
         [dT(I, T, p.k, p.n, p.Tbath, p.C, r),
                  dI(I,T, bt.V, p.Rl, p.L, r)]
