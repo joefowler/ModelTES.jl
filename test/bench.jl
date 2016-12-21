@@ -66,6 +66,7 @@ t3=@elapsed sol2_abstol = solve(prob,method,dt=1e-9,abstol=1e-9,reltol=1e-9, sav
 
 @time sol_saveat = solve(prob,method,dt=1e-9,reltol=1e-9, dense=false, saveat=times2, save_timeseries=false);
 
+using PyPlot
 figure()
 plot(sol2_abstol.t,sol2_abstol[:,2],label="abstol,reltol=1e-9")
 plot(sol2.t,sol2[:,2],label="reltol=1e-9")
