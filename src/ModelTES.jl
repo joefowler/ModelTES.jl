@@ -308,14 +308,14 @@ function stochastic(nsample::Int, dt::Float64, bt, E::Number, npresample::Int=0,
 end
 
 
-"Calling a BiasedTES gives the dI and dT terms for integration."
-function (bt::BiasedTES){S<:Float64}(t::Float64, y::AbstractVector{S}, dy::AbstractVector{S})
-    T,I = y[1],y[2]
+"Calling a BiasedTES gives the dI and dT terms for integration in an in place manner."
+function (bt::BiasedTES){S<:Float64}(t::Float64, u::AbstractVector{S}, du::AbstractVector{S})
+    T,I = u[1],u[2]
     p = bt.p
     r = R(I,T,p)
     # dT(I, T, p.k, p.n, p.Tbath, p.C, r)
     # dI(I,T, bt.V, p.Rl, p.L, r)
-    dy[:] = [dT(I, T, p.k, p.n, p.Tbath, p.C, r),
+    du[:] = [dT(I, T, p.k, p.n, p.Tbath, p.C, r),
              dI(I,T, bt.V, p.Rl, p.L, r)]
 end
 
@@ -346,22 +346,25 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
 end
 
 # example of using the DifferentialEquations API to solve the relevant equations
-function adaptive_solve(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0)
-    p = bt.p
-    # u = [T,I]
-    u0 = [bt.T0+E*ModelTES.J_per_eV/p.C, bt.I0]
-    function du(t,u)
-        T,I = u[1],u[2]
-        r = R(I,T,p)
-        [dT(I, T, p.k, p.n, p.Tbath, p.C, r),
-                 dI(I,T, bt.V, p.Rl, p.L, r)]
+function adaptive_solve(bt::BiasedTES, dt::Float64, tspan::Tuple{Float64,Float64}, E::Number, method)
+    u0 = [bt.T0+E*ModelTES.J_per_eV/bt.p.C, bt.I0]
+    prob = ODEProblem(bt, u0, tspan)
+    sol = solve(prob,method,dt=dt,abstol=1e-11,reltol=1e-11)
+end
+
+function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Vern8())
+    tstart = time()
+    @show 1,time()-tstart
+    sol=adaptive_solve(bt,dtsolver,(0.0,dt*nsample), E, method)
+    @show 2,time()-tstart
+    T = Vector{Float64}(nsample)
+    I = Vector{Float64}(nsample)
+    times = range(-npresamples, 1, nsample)*dt
+    for (i,t) in enumerate(times)
+        # T[i],I[i] = sol(t<0 ? 0.0 : t)
     end
-    prob = ODEProblem(du, u0, (0.0,nsample*dt))
-    sol = solve(prob,DifferentialEquations.Vern8(),dt=1e-9,abstol=1e-11,reltol=1e-11)
-    out =  sol(0:dt:(nsample-1)*dt);
-    T=[o[1] for o in out];
-    I=[o[2] for o in out];
-    ModelTES.TESRecord(T,I, R(I,T,bt.p),dt)
+    @show 3,time()-tstart
+    ModelTES.TESRecord(T,I, ModelTES.R(I,T,bt.p),dt)
 end
 
 end # module
