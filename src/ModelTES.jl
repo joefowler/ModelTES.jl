@@ -15,20 +15,19 @@ abstract AbstractRIT
 # following Irwin-Hilton figure 3
 type TESParams{RITType<:AbstractRIT}
     n       ::Float64   # thermal conductance exponent (unitless)
-    Tc      ::Float64   # TES critical temperature (K)
+    Tc      ::Float64  # TES critical temperature (K)
     Tbath   ::Float64   # bath temperature (K)
 
     k       ::Float64   # Pbath pre-factor (W/K^n)
     C       ::Float64   # heat capacity of TES (J/K)
 
-    L       ::Float64   # inductance of SQUID (H)
+    L       ::Float64  # inductance of SQUID (H)
     Rl      ::Float64   # Thevenin-equivalent resistance Rload = (Rshunt+Rparasitic)(ohms)
                         # note Ibias = V/Rshunt
     Rp      ::Float64   # Rparastic; Rshunt = Rl-Rparasitic (ohms)
     Rn      ::Float64   # normal resistance of TES (ohms)
 
     RIT     ::RITType   # RIT surface
-
 end
 
 
@@ -155,10 +154,10 @@ function getlinearparams(bt::BiasedTES)
    tauplus = 1/(invtau+invtaupm)
    tauminus = 1/(invtau-invtaupm)
    c = loopgain*(3+beta-r)+(1+beta+r)
-   d = loopgain*(2+beta)*(loopgain*(1-r)+(1+beta+r))
-   f = 2*sqrt(d)*R0*tauthermal/(loopgain-1)^2
-   lcritplus = c+f
-   lcritminus = c-f
+   d = 2*sqrt(loopgain*(2+beta)*(loopgain*(1-r)+(1+beta+r)))
+   f = R0*tauthermal/(loopgain-1)^2
+   lcritplus = (c+d)*f
+   lcritminus = (c-d)*f
    bt.I0, bt.T0, bt.V, p.Rl, p.Tbath, p.Tbath, p.L, R0, G0, p.C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus
 end
 
