@@ -105,8 +105,7 @@ function getlinearparams(bt::BiasedTES)
    p = bt.p
    R0 = getR0(bt)
    G0 = getG0(bt)
-   g = ForwardDiff.gradient(f)
-   drdi,drdt = g([bt.I0, bt.T0])
+   drdi,drdt = ForwardDiff.gradient(f,[bt.I0, bt.T0])
    alpha = drdt*bt.T0/R0
    beta = drdi*bt.I0/R0
    PJ = bt.I0^2*R0
@@ -123,10 +122,10 @@ function getlinearparams(bt::BiasedTES)
    tauplus = 1/(invtau+invtaupm)
    tauminus = 1/(invtau-invtaupm)
    c = loopgain*(3+beta-r)+(1+beta+r)
-   d = loopgain*(2+beta)*(loopgain*(1-r)+(1+beta+r))
-   f = 2*sqrt(d)*R0*tauthermal/(loopgain-1)^2
-   lcritplus = c+f
-   lcritminus = c-f
+   d = 2*sqrt(loopgain*(2+beta)*(loopgain*(1-r)+(1+beta+r)))
+   f = R0*tauthermal/(loopgain-1)^2
+   lcritplus = (c+d)*f
+   lcritminus = (c-d)*f
    bt.I0, bt.T0, bt.V, p.Rl, p.Tbath, p.Tbath, p.L, R0, G0, p.C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus
 end
 
