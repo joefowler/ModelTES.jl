@@ -2,7 +2,7 @@ module ModelTES
 export transitionwidth, BiasedTES, TESParams, getlinearparams,
     noise, ARMAmodel, ARMApowerspectrum, ARMAcovariance,
     generateARMAnoise,
-    TESRecord, times, rk8, IrwinHiltonTES, stochastic, adaptive_solve
+    TESRecord, times, rk8, IrwinHiltonTES, stochastic, pulse
 using Roots, ForwardDiff, DifferentialEquations
 include("rk8.jl")
 include("tes_models.jl")
@@ -335,36 +335,43 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
     I = Array(Float64, nsample)
     T[1:npresamples], I[1:npresamples] = bt.T0, bt.I0 # set T0, I0 for presamples
     y = [bt.T0+E*J_per_eV/p.C, bt.I0]; ys = similar(y); work = Array(Float64, 14)
-
-    for i = npresamples+1:nsample
+    T[npresamples+1]=y[1]
+    I[npresamples+1]=y[2]
+    @show "rk8", y
+    # npresamples+1 is the point at which initial conditions hold (T differs from T0)
+    # npresamples+2 is the first point at which I differs from I0
+    for i = npresamples+2:nsample
         rk8!(bt, 0.0, dt, y, ys, work)
         y[:] = ys
         T[i] = y[1]
         I[i] = y[2]
     end
+
     TESRecord(T, I, R(I,T,bt.p), dt)
 end
 
 # example of using the DifferentialEquations API to solve the relevant equations
-function adaptive_solve(bt::BiasedTES, dt::Float64, tspan::Tuple{Float64,Float64}, E::Number, method)
+function adaptive_solve(bt::BiasedTES, dt::Float64, tspan::Tuple{Float64,Float64}, E::Number, method, abstol, reltol, saveat)
     u0 = [bt.T0+E*ModelTES.J_per_eV/bt.p.C, bt.I0]
     prob = ODEProblem(bt, u0, tspan)
-    sol = solve(prob,method,dt=dt,abstol=1e-11,reltol=1e-11)
+    sol = solve(prob,method,dt=dt,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false)
 end
 
-function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Vern8())
-    tstart = time()
-    @show 1,time()-tstart
-    sol=adaptive_solve(bt,dtsolver,(0.0,dt*nsample), E, method)
-    @show 2,time()-tstart
+function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)
+    u0 = [bt.T0+E*ModelTES.J_per_eV/bt.p.C, bt.I0]
+    saveat = range(0,dt, nsample-npresamples)
+    prob = ODEProblem(bt, u0, (0.0, last(saveat)))
+    sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false)
+    # npresamples+1 is the point at which initial conditions hold (T differs from T0) (sol[1])
+    # npresamples+2 is the first point at which I differs from I0
     T = Vector{Float64}(nsample)
     I = Vector{Float64}(nsample)
-    times = range(-npresamples, 1, nsample)*dt
-    for (i,t) in enumerate(times)
-        # T[i],I[i] = sol(t<0 ? 0.0 : t)
-    end
-    @show 3,time()-tstart
-    ModelTES.TESRecord(T,I, ModelTES.R(I,T,bt.p),dt)
+    T[npresamples+1:end] = sol[:,1]
+    I[npresamples+1:end] = sol[:,2]
+    T[1:npresamples]=bt.T0
+    I[1:npresamples]=bt.I0
+    @show "pulse", u0
+    TESRecord(T,I, ModelTES.R(I,T,bt.p),dt)
 end
 
 end # module
