@@ -6,9 +6,9 @@
 # Analysis 9, pp. 389-405 (1972).
 function rk8!(df, t, h, y, ys, work)
     n = length(y)
-    rk8aux(df, t, h, y, ys, sub(work,1:n),
-           sub(work,  n+1:2*n), sub(work,2*n+1:3*n), sub(work,3*n+1:4*n),
-           sub(work,4*n+1:5*n), sub(work,5*n+1:6*n), sub(work,6*n+1:7*n))
+    rk8aux(df, t, h, y, ys, view(work,1:n),
+           view(work,  n+1:2*n), view(work,2*n+1:3*n), view(work,3*n+1:4*n),
+           view(work,4*n+1:5*n), view(work,5*n+1:6*n), view(work,6*n+1:7*n))
 end
 function rk8aux(df, t, h, y, ys, yp, f1,f2,f3,f4,f5,f6)
     n = length(y)
