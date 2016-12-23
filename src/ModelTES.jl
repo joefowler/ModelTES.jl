@@ -53,6 +53,7 @@ type BiasedTES{T}
     I0::Float64 # intial current for diff eq, aka current through TES (A)
     T0::Float64 # initial temperature for diff equations, aka temperature of TES (K)
     V ::Float64 # thevinen equivalent voltage V = I0*(p.Rl+p.R0), R0=quiescent resistance
+                # also equal to Ibias*Rshunt
 end
 
 
@@ -74,7 +75,7 @@ function initialconditions(p::TESParams, targetR)
    V00 = I00*(p.Rl+R00)
    # now evolve these conditions through integration to really lock them in.
    # shouldn't hard code step size here
-   out = rk8(1000,1e-5, BiasedTES(p, I00, T00, V00), 0)
+   out = pulse(10,1e-1, BiasedTES(p, I00, T00, V00), 0)
    T0 = out.T[end]
    I0 = out.I[end]
    R0 = R(I0,T0,p)
@@ -90,27 +91,43 @@ function BiasedTES{T<:ShankRIT}(p::TESParams{T}, R0::Float64)
    BiasedTES(p,I0,T0,V)
 end
 
-function iv_point(p::TESParams, V)
-    I00 = V/p.Rn
-    # don't hardcode time steps
-    out = rk8(8000,4e-5, BiasedTES(p, I00, p.Tc, V), 0)
-    # out = adaptive_solve(5000,1e-4, BiasedTES(p, I00, p.Tc, V), 0)
-    # @assert (out.I[end]-out.I[end-1])<1e-13
-    @assert (out.T[end]-out.T[end-1])<1e-9
-    # @assert (out.R[end]-out.R[end-1])<1e-9
-    T0 = out.T[end]
-    I0 = out.I[end]
-    R0 = R(I0,T0,p)
-    V = I0*(p.Rl+R0)
-    I0,T0,R0,V
+"iv_point(p::TESParams, V, I0, T0)
+takes thevinin voltage `V`, and initial current `I0`, and intial temperature `T0`
+evolves a pulse for 1 second, and takes the final values
+returns I,T,V,R"
+function iv_point(p::TESParams, V, I0, T0)
+    # solve with an adapative algorithm that is fast for large time steps,
+    # ask for very long time steps
+    # we probably shouldn't hardcode the time, but 1 second is long for all TESs I know of
+    out = pulse(2,1.0, BiasedTES(p, I0, T0, V), 0, method=DifferentialEquations.Rosenbrock23())
+    T = out.T[end]
+    I = out.I[end]
+    R = out.R[end]
+    V = I*(p.Rl+R)
+    I,T,R,V
 end
+
+"iv_curve(p::TESParams, Vs)
+takes a sorted array of V thevinin values `Vs`, calculates ivs points by
+evolving a pulse for 1 second, and taking the last value
+returns Is, Ts, Vs_out, Rs"
 function iv_curve(p::TESParams, Vs)
     Is=Vector{Float64}(length(Vs))
     Ts=Vector{Float64}(length(Vs))
     Rs=Vector{Float64}(length(Vs))
     Vs_out=Vector{Float64}(length(Vs))
-    for i in eachindex(Vs)
-            I,T,R,V = iv_point(p,Vs[i])
+    @assert issorted(Vs)
+    for i in length(Vs):-1:1
+            if Vs[i]==0
+                I,T,R,V=0.0, p.Tbath, 0.0, 0.0
+            elseif i==length(Vs)
+                # provide guesses that guaranteed to be resistive
+                I,T,R,V = iv_point(p, Vs[i], Vs[i]/p.Rn, p.Tc)
+            elseif i<length(Vs)
+                #provide last solution as guesses
+                # I got a speedup by providing nearby starting points, it was less than a factor of 2
+                I,T,R,V = iv_point(p, Vs[i], Is[i+1], Ts[i+1])
+            end
             Is[i]=I
             Ts[i]=T
             Rs[i]=R
@@ -118,6 +135,15 @@ function iv_curve(p::TESParams, Vs)
     end
     Is,Ts,Rs,Vs_out
 end
+
+function dT_and_dI_iv_point(p,I,T,R,V)
+    bt = BiasedTES(p, I, T, V)
+    du = zeros(2)
+    u = [T,I]
+    bt(0.0, u, du)
+    du
+end
+
 
 
 "Calculate `R0` the quiescent resistance of `tes`."
@@ -245,7 +271,6 @@ function dI(I, T, V, Rl, L, R)
 end
 
 
-"Modify `dy` to contain "
 function stochasticdy!(dy,y,dt,bt::BiasedTES)
    p=bt.p
    T, I = y # tes tempertature, tes current
@@ -337,7 +362,6 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
     y = [bt.T0+E*J_per_eV/p.C, bt.I0]; ys = similar(y); work = Array(Float64, 14)
     T[npresamples+1]=y[1]
     I[npresamples+1]=y[2]
-    @show "rk8", y
     # npresamples+1 is the point at which initial conditions hold (T differs from T0)
     # npresamples+2 is the first point at which I differs from I0
     for i = npresamples+2:nsample
@@ -370,8 +394,7 @@ function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples:
     I[npresamples+1:end] = sol[:,2]
     T[1:npresamples]=bt.T0
     I[1:npresamples]=bt.I0
-    @show "pulse", u0
-    TESRecord(T,I, ModelTES.R(I,T,bt.p),dt)
+    TESRecord(T,I, R(I,T,bt.p),dt)
 end
 
 end # module
