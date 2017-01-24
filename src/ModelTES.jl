@@ -187,7 +187,7 @@ function getlinearparams(bt::BiasedTES)
    bt.I0, bt.T0, bt.V, p.Rl, p.Tbath, p.Tbath, p.L, R0, G0, p.C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus
 end
 
-"Paramters from Irwin-Hilton table one for modeling a linear TES."
+"Paramters from Irwin-Hilton table one for modeling a linear TES. Defined in Table 1 of Irwin-Hilton chapter."
 type IrwinHiltonTES
    I0::Float64
    T0::Float64
@@ -200,12 +200,12 @@ type IrwinHiltonTES
    G0::Float64
    C0::Float64
    alpha::Float64
-   beta::Float64
-   loopgain::Float64
+   beta::Float64 #βI
+   loopgain::Float64 #ℒI
    tauthermal::Float64
-   taucc::Float64
+   taucc::Float64 #τI
    taueff::Float64
-   tauelectrical::Float64
+   tauelectrical::Float64 #τel
    tauplus::Float64
    tauminus::Float64
    lcritplus::Float64
@@ -216,6 +216,18 @@ end
 function IrwinHiltonTES(tes::BiasedTES)
     linearparams = getlinearparams(tes)
     IrwinHiltonTES(linearparams...)
+end
+
+"Z(tes::IrwinHiltonTES, f) iPmpedance of the `tes` at  frequency `f`, implements equation 42 of Irwin-Hilton chapter."
+function Z(tes::IrwinHiltonTES, f)
+  ω=2*π*f
+  tes.R0*(1+tes.beta) +tes.R0*tes.loopgain*(2+tes.beta)./((1-tes.loopgain)*(1+im*ω*tes.taucc))
+end
+
+"Zcircuit(tes::IrwinHiltonTES, f) impedance of complete circuit of `tes` at frequency `f`."
+function Zcircuit(tes::IrwinHiltonTES, f)
+  ω=2*π*f
+  tes.R0 + im*ω*tes.L + Z(tes,ω)
 end
 
 

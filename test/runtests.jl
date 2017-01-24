@@ -49,15 +49,12 @@ out_ts2 = ModelTES.TESRecord(out_for_resample.T[1:100:end], out_for_resample.I[1
 # Integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples from the higher biased version of the same tes
 out2 = pulse(12000,1e-7, tes2, 1000, 2000);
 
-# Get all the linear parameters for the irwin hilton model
-lintes = IrwinHiltonTES(tes)
-# Calculate the noise and the 4 components in the IrwinHilton model
-f = logspace(0,6,100);
-n,n1,n2,n3,n4 = noise(lintes, f);
-
 # Calculate a stochastic noise 1000 eV pulse with 12000 samples and 2000 presmples
 outstochastic = stochastic(12000,1e-7, tes, 1000,2000);
 
 # make the other tess in tes_models
 ModelTES.lowEpix()
 ModelTES.pholmes(50e-9)
+
+
+include("ihtes.jl")
