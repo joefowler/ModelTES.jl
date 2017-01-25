@@ -36,7 +36,7 @@ end
 to be used for approximating the noise as an ARMA(2,2) process, and `sigma`
 is the rms current (Amps)."
 function ARMAmodel(tes::IrwinHiltonTES, sampleTime::Float64, SI_amp=5e-22)
-    const F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
+    const F  = 1 # this term goes from 0 to one and depends on whether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
     SP_TFN = 4*kb*tes.T0^2*tes.G0*F
     SV_TES = 4*kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
     SV_L   = 4*kb*tes.T0*tes.Rl  # Load voltage noise
@@ -175,7 +175,7 @@ function generateARMAnoise(theta::Vector{Float64}, phi::Vector{Float64}, sigma::
     # Let the discarded data be at least 20 e-folding times for the
     # slowest root of theta(z), OR 10k samples, whichever is longer.
     r = Polynomials.roots(Poly(theta, :x))
-    fadetime = 20./log(r)
+    fadetime = 20./log(abs(r))
     const Ndiscard=max(10000,Int(floor(maximum(fadetime))))
     const Ncompute = N+Ndiscard
 

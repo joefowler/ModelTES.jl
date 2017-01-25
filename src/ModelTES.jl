@@ -105,8 +105,9 @@ function getlinearparams(bt::BiasedTES)
    p = bt.p
    R0 = getR0(bt)
    G0 = getG0(bt)
-   g = ForwardDiff.gradient(f)
-   drdi,drdt = g([bt.I0, bt.T0])
+   # g = ForwardDiff.gradient(f)
+   # drdi,drdt = g([bt.I0, bt.T0])
+   drdi,drdt = ForwardDiff.gradient(f, [bt.I0, bt.T0])
    alpha = drdt*bt.T0/R0
    beta = drdi*bt.I0/R0
    PJ = bt.I0^2*R0
@@ -114,7 +115,7 @@ function getlinearparams(bt::BiasedTES)
    tauthermal = p.C/G0
    taucc = tauthermal/(1-loopgain) # constant current time constant
    r = p.Rl/R0
-   taueff = (1+beta+r)/(1+beta+r+(1-r)*loopgain) # zero inductance effecticve thermal time constant
+   taueff = (1+beta+r)/(1+beta+r+(1-r)*loopgain) # zero inductance effective thermal time constant
    tauelectrical = p.L/(p.Rl+R0*(1+beta))
    invtau = 1/(2*tauelectrical)+1/(2*taucc)
    a = (1/tauelectrical-1/taucc)^2
@@ -310,6 +311,43 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
         y[:] = ys
         T[i] = y[1]
         I[i] = y[2]
+    end
+    TESRecord(T, I, R(I,T,bt.p), dt)
+end
+
+function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Vector, sampnums::Vector)
+    # Multiple photons of energies E arrive at times sampnums.
+    @assert minimum(sampnums) >= 1
+    @assert maximum(sampnums) <= nsample
+    @assert length(E) == length(sampnums)
+    const Npings = length(E)
+
+    # Pair of differential equations y' = f(t,y), where y=[T,I]
+    p = bt.p
+    # Integrate pair of ODEs for all energies EE
+    T = Array(Float64, nsample)
+    I = Array(Float64, nsample)
+
+    I0 = bt.I0
+    T0 = bt.T0
+    if sampnums[1] > 1
+        npresamples = sampnums[1]
+        T[1:npresamples], I[1:npresamples] = bt.T0, bt.I0 # set T0, I0 for presamples
+    end
+    for pingnum = 1:Npings
+        y = [T0+E[pingnum]*J_per_eV/p.C, I0]; ys = similar(y); work = Array(Float64, 14)
+
+        lastsample = nsample
+        if pingnum < Npings
+            lastsample = sampnums[pingnum+1]
+        end
+        for i = sampnums[pingnum]:lastsample
+            rk8!(bt, 0.0, dt, y, ys, work)
+            y[:] = ys
+            T[i] = y[1]
+            I[i] = y[2]
+        end
+        T0,I0 = y
     end
     TESRecord(T, I, R(I,T,bt.p), dt)
 end

@@ -35,6 +35,17 @@ function highEpix()
     bt = BiasedTES(tes_param, R0)
 end
 
+"""Return a BiasedTES object containin parameters for the Oct 2016 LCLS-II model"""
+function LCLSII(L=52e-9)
+    Tc=0.075; Tbath = 0.055
+    Rl = 0.34e-3; Rn = 13.5e-3; Rpara=0.0; R0=0.15*Rn
+    n=3.5; G=130e-12; k = G/(n*Tc^(n-1)); C = 0.11e-12
+    alpha = 120.0; beta = 1.69
+    model = ModelTES.ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn);
+    tes_param = TESParams(n,Tc,Tbath,k,C,L,Rl,Rpara,Rn,model)
+    bt = BiasedTES(tes_param, R0)
+end
+
 "Plot a noise power spectral density for 5 TES model systems.
 For one, plot the 4 components from the Irwin-Hiltom model."
 function noise_power_demo(SI_amp=5e-22)

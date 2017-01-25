@@ -29,8 +29,6 @@ n,n1,n2,n3,n4 = noise(lintes, f);
 # Calculate a stochastic noise 1000 eV pulse with 12000 samples and 2000 presmples
 outstochastic = stochastic(12000,1e-7, tes, 1000,2000);
 
-
-
 figure()
 title("stochastic pulse and noiseless pulse")
 plot(1e3*times(out), 1e6*out.I,".k")
