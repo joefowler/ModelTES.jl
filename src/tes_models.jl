@@ -1,4 +1,4 @@
-using PyPlot, ModelTES
+using ModelTES
 
 """Return a BiasedTES object containing parameters for a HOLMES notional TES"""
 function pholmes(L, RbiasFraction=0.2)
@@ -49,6 +49,7 @@ end
 "Plot a noise power spectral density for 5 TES model systems.
 For one, plot the 4 components from the Irwin-Hiltom model."
 function noise_power_demo(SI_amp=5e-22)
+    using PyPlot
     models = Dict(
         :LowE=>lowEpix(),
         :HighE=>highEpix(),

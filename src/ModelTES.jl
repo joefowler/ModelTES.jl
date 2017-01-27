@@ -2,8 +2,8 @@ module ModelTES
 export transitionwidth, BiasedTES, TESParams, getlinearparams,
     noise, ARMAmodel, ARMApowerspectrum, ARMAcovariance,
     generateARMAnoise,
-    TESRecord, times, rk8, IrwinHiltonTES, stochastic
-using Roots, ForwardDiff
+    TESRecord, times, rk8, IrwinHiltonTES, stochastic, pulse
+using Roots, ForwardDiff, DifferentialEquations
 include("rk8.jl")
 include("tes_models.jl")
 
@@ -15,19 +15,19 @@ abstract AbstractRIT
 # following Irwin-Hilton figure 3
 type TESParams{RITType<:AbstractRIT}
     n       ::Float64   # thermal conductance exponent (unitless)
-    Tc      ::Float64   # TES critical temperature (K)
+    Tc      ::Float64  # TES critical temperature (K)
     Tbath   ::Float64   # bath temperature (K)
 
     k       ::Float64   # Pbath pre-factor (W/K^n)
     C       ::Float64   # heat capacity of TES (J/K)
 
-    L       ::Float64   # inductance of SQUID (H)
+    L       ::Float64  # inductance of SQUID (H)
     Rl      ::Float64   # Thevenin-equivalent resistance Rload = (Rshunt+Rparasitic)(ohms)
-    Rp      ::Float64   # Rparastic, Rshunt = Rl-Rparasitic (ohms)
+                        # note Ibias = V/Rshunt
+    Rp      ::Float64   # Rparastic; Rshunt = Rl-Rparasitic (ohms)
     Rn      ::Float64   # normal resistance of TES (ohms)
 
     RIT     ::RITType   # RIT surface
-
 end
 
 
@@ -37,7 +37,6 @@ type ShankRIT <: AbstractRIT
 end
 transitionwidth(RIT::ShankRIT)=RIT.Tw
 transitionwidth(p::TESParams)=transitionwidth(p.RIT)
-
 
 "Constructor that fixes `Tw` and `A` for a ShankRIT to have the given `alpha` and `beta`
 parameters when biased at resistance `R0`."
@@ -51,10 +50,14 @@ end
 
 type BiasedTES{T}
     p::TESParams{T}
-    I0::Float64 # intial current for diff eq (A)
-    T0::Float64 # initial temperature for diff equations (K)
+    I0::Float64 # intial current for diff eq, aka current through TES (A)
+    T0::Float64 # initial temperature for diff equations, aka temperature of TES (K)
     V ::Float64 # thevinen equivalent voltage V = I0*(p.Rl+p.R0), R0=quiescent resistance
+                # also equal to Ibias*Rshunt
 end
+
+
+
 
 
 "For a given T0, the difference R-targetR. Use to solve numerically for T0."
@@ -71,7 +74,8 @@ function initialconditions(p::TESParams, targetR)
    R00 = R(I00,T00,p)
    V00 = I00*(p.Rl+R00)
    # now evolve these conditions through integration to really lock them in.
-   out = rk8(1000,1e-5, BiasedTES(p, I00, T00, V00), 0)
+   # shouldn't hard code step size here
+   out = pulse(10,1e-1, BiasedTES(p, I00, T00, V00), 0)
    T0 = out.T[end]
    I0 = out.I[end]
    R0 = R(I0,T0,p)
@@ -86,6 +90,60 @@ function BiasedTES{T<:ShankRIT}(p::TESParams{T}, R0::Float64)
    I0, T0, V = initialconditions(p,R0)
    BiasedTES(p,I0,T0,V)
 end
+
+"iv_point(p::TESParams, V, I0, T0)
+takes thevinin voltage `V`, and initial current `I0`, and intial temperature `T0`
+evolves a pulse for 1 second, and takes the final values
+returns I,T,V,R"
+function iv_point(p::TESParams, V, I0, T0)
+    # solve with an adapative algorithm that is fast for large time steps,
+    # ask for very long time steps
+    # we probably shouldn't hardcode the time, but 1 second is long for all TESs I know of
+    out = pulse(2,1.0, BiasedTES(p, I0, T0, V), 0, method=DifferentialEquations.Rosenbrock23())
+    T = out.T[end]
+    I = out.I[end]
+    R = out.R[end]
+    V = I*(p.Rl+R)
+    I,T,R,V
+end
+
+"iv_curve(p::TESParams, Vs)
+takes a sorted array of V thevinin values `Vs`, calculates ivs points by
+evolving a pulse for 1 second, and taking the last value
+returns Is, Ts, Vs_out, Rs"
+function iv_curve(p::TESParams, Vs)
+    Is=Vector{Float64}(length(Vs))
+    Ts=Vector{Float64}(length(Vs))
+    Rs=Vector{Float64}(length(Vs))
+    Vs_out=Vector{Float64}(length(Vs))
+    @assert issorted(Vs)
+    for i in length(Vs):-1:1
+            if Vs[i]==0
+                I,T,R,V=0.0, p.Tbath, 0.0, 0.0
+            elseif i==length(Vs)
+                # provide guesses that guaranteed to be resistive
+                I,T,R,V = iv_point(p, Vs[i], Vs[i]/p.Rn, p.Tc)
+            elseif i<length(Vs)
+                #provide last solution as guesses
+                # I got a speedup by providing nearby starting points, it was less than a factor of 2
+                I,T,R,V = iv_point(p, Vs[i], Is[i+1], Ts[i+1])
+            end
+            Is[i]=I
+            Ts[i]=T
+            Rs[i]=R
+            Vs_out[i]=V
+    end
+    Is,Ts,Rs,Vs_out
+end
+
+function dT_and_dI_iv_point(p,I,T,R,V)
+    bt = BiasedTES(p, I, T, V)
+    du = zeros(2)
+    u = [T,I]
+    bt(0.0, u, du)
+    du
+end
+
 
 
 "Calculate `R0` the quiescent resistance of `tes`."
@@ -105,8 +163,6 @@ function getlinearparams(bt::BiasedTES)
    p = bt.p
    R0 = getR0(bt)
    G0 = getG0(bt)
-   # g = ForwardDiff.gradient(f)
-   # drdi,drdt = g([bt.I0, bt.T0])
    drdi,drdt = ForwardDiff.gradient(f, [bt.I0, bt.T0])
    alpha = drdt*bt.T0/R0
    beta = drdi*bt.I0/R0
@@ -124,14 +180,14 @@ function getlinearparams(bt::BiasedTES)
    tauplus = 1/(invtau+invtaupm)
    tauminus = 1/(invtau-invtaupm)
    c = loopgain*(3+beta-r)+(1+beta+r)
-   d = loopgain*(2+beta)*(loopgain*(1-r)+(1+beta+r))
-   f = 2*sqrt(d)*R0*tauthermal/(loopgain-1)^2
-   lcritplus = c+f
-   lcritminus = c-f
+   d = 2*sqrt(loopgain*(2+beta)*(loopgain*(1-r)+(1+beta+r)))
+   f = R0*tauthermal/(loopgain-1)^2
+   lcritplus = (c+d)*f
+   lcritminus = (c-d)*f
    bt.I0, bt.T0, bt.V, p.Rl, p.Tbath, p.Tbath, p.L, R0, G0, p.C, alpha, beta, loopgain, tauthermal, taucc, taueff, tauelectrical, tauplus, tauminus, lcritplus, lcritminus
 end
 
-"Paramters from Irwin-Hilton table one for modeling a linear TES."
+"Paramters from Irwin-Hilton table one for modeling a linear TES. Defined in Table 1 of Irwin-Hilton chapter."
 type IrwinHiltonTES
    I0::Float64
    T0::Float64
@@ -144,12 +200,12 @@ type IrwinHiltonTES
    G0::Float64
    C0::Float64
    alpha::Float64
-   beta::Float64
-   loopgain::Float64
+   beta::Float64 #βI
+   loopgain::Float64 #ℒI
    tauthermal::Float64
-   taucc::Float64
+   taucc::Float64 #τI
    taueff::Float64
-   tauelectrical::Float64
+   tauelectrical::Float64 #τel
    tauplus::Float64
    tauminus::Float64
    lcritplus::Float64
@@ -160,6 +216,18 @@ end
 function IrwinHiltonTES(tes::BiasedTES)
     linearparams = getlinearparams(tes)
     IrwinHiltonTES(linearparams...)
+end
+
+"Z(tes::IrwinHiltonTES, f) iPmpedance of the `tes` at  frequency `f`, implements equation 42 of Irwin-Hilton chapter."
+function Z(tes::IrwinHiltonTES, f)
+  ω=2*π*f
+  tes.R0*(1+tes.beta) +tes.R0*tes.loopgain*(2+tes.beta)./((1-tes.loopgain)*(1+im*ω*tes.taucc))
+end
+
+"Zcircuit(tes::IrwinHiltonTES, f) impedance of complete circuit of `tes` at frequency `f`."
+function Zcircuit(tes::IrwinHiltonTES, f)
+  ω=2*π*f
+  tes.R0 + im*ω*tes.L + Z(tes,ω)
 end
 
 
@@ -215,7 +283,6 @@ function dI(I, T, V, Rl, L, R)
 end
 
 
-"Modify `dy` to contain "
 function stochasticdy!(dy,y,dt,bt::BiasedTES)
    p=bt.p
    T, I = y # tes tempertature, tes current
@@ -278,15 +345,15 @@ function stochastic(nsample::Int, dt::Float64, bt, E::Number, npresample::Int=0,
 end
 
 
-"Calling a BiasedTES gives the dI and dT terms for integration."
-function Base.call{S<:Float64}(bt::BiasedTES, t::Float64, y::AbstractVector{S}, dy::AbstractVector{S})
-    T,I = y[1],y[2]
+"Calling a BiasedTES gives the dI and dT terms for integration in an in place manner."
+function (bt::BiasedTES){S}(t, u::AbstractVector{S}, du::AbstractVector{S})
+    T,I = u[1],u[2]
     p = bt.p
     r = R(I,T,p)
-    dT(I, T, p.k, p.n, p.Tbath, p.C, r)
-    dI(I,T, bt.V, p.Rl, p.L, r)
-    dy[:] = [dT(I, T, p.k, p.n, p.Tbath, p.C, r),
-             dI(I,T, bt.V, p.Rl, p.L, r)]
+    # dT(I, T, p.k, p.n, p.Tbath, p.C, r)
+    # dI(I,T, bt.V, p.Rl, p.L, r)
+    du[1] = dT(I, T, p.k, p.n, p.Tbath, p.C, r)
+    du[2] = dI(I,T, bt.V, p.Rl, p.L, r)
 end
 
 function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Vector, npresamples::Int=0)
@@ -305,51 +372,41 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
     I = Array(Float64, nsample)
     T[1:npresamples], I[1:npresamples] = bt.T0, bt.I0 # set T0, I0 for presamples
     y = [bt.T0+E*J_per_eV/p.C, bt.I0]; ys = similar(y); work = Array(Float64, 14)
-
-    for i = npresamples+1:nsample
+    T[npresamples+1]=y[1]
+    I[npresamples+1]=y[2]
+    # npresamples+1 is the point at which initial conditions hold (T differs from T0)
+    # npresamples+2 is the first point at which I differs from I0
+    for i = npresamples+2:nsample
         rk8!(bt, 0.0, dt, y, ys, work)
         y[:] = ys
         T[i] = y[1]
         I[i] = y[2]
     end
+
     TESRecord(T, I, R(I,T,bt.p), dt)
 end
 
-function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Vector, sampnums::Vector)
-    # Multiple photons of energies E arrive at times sampnums.
-    @assert minimum(sampnums) >= 1
-    @assert maximum(sampnums) <= nsample
-    @assert length(E) == length(sampnums)
-    const Npings = length(E)
+# example of using the DifferentialEquations API to solve the relevant equations
+function adaptive_solve(bt::BiasedTES, dt::Float64, tspan::Tuple{Float64,Float64}, E::Number, method, abstol, reltol, saveat)
+    u0 = [bt.T0+E*ModelTES.J_per_eV/bt.p.C, bt.I0]
+    prob = ODEProblem(bt, u0, tspan)
+    sol = solve(prob,method,dt=dt,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false)
+end
 
-    # Pair of differential equations y' = f(t,y), where y=[T,I]
-    p = bt.p
-    # Integrate pair of ODEs for all energies EE
-    T = Array(Float64, nsample)
-    I = Array(Float64, nsample)
-
-    I0 = bt.I0
-    T0 = bt.T0
-    if sampnums[1] > 1
-        npresamples = sampnums[1]
-        T[1:npresamples], I[1:npresamples] = bt.T0, bt.I0 # set T0, I0 for presamples
-    end
-    for pingnum = 1:Npings
-        y = [T0+E[pingnum]*J_per_eV/p.C, I0]; ys = similar(y); work = Array(Float64, 14)
-
-        lastsample = nsample
-        if pingnum < Npings
-            lastsample = sampnums[pingnum+1]
-        end
-        for i = sampnums[pingnum]:lastsample
-            rk8!(bt, 0.0, dt, y, ys, work)
-            y[:] = ys
-            T[i] = y[1]
-            I[i] = y[2]
-        end
-        T0,I0 = y
-    end
-    TESRecord(T, I, R(I,T,bt.p), dt)
+function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)
+    u0 = [bt.T0+E*ModelTES.J_per_eV/bt.p.C, bt.I0]
+    saveat = range(0,dt, nsample-npresamples)
+    prob = ODEProblem(bt, u0, (0.0, last(saveat)))
+    sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false)
+    # npresamples+1 is the point at which initial conditions hold (T differs from T0) (sol[1])
+    # npresamples+2 is the first point at which I differs from I0
+    T = Vector{Float64}(nsample)
+    I = Vector{Float64}(nsample)
+    T[npresamples+1:end] = sol[:,1]
+    I[npresamples+1:end] = sol[:,2]
+    T[1:npresamples]=bt.T0
+    I[1:npresamples]=bt.I0
+    TESRecord(T,I, R(I,T,bt.p),dt)
 end
 
 end # module

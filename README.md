@@ -17,9 +17,9 @@ tes =  ModelTES.pholmes(48e-9, 0.20)
 # Create a Biased TES from the 48 nanohentry Holmes paramters with 0.4*Rn resistance
 tes2 = ModelTES.pholmes(48e-9, 0.40)
 # Integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples
-out = rk8(12000,1e-7, tes, 1000, 2000);
+out = pulse(12000,1e-7, tes, 1000, 2000);
 # Integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples from the higher biased version of the same tes
-out2 = rk8(12000,1e-7, tes2, 1000, 2000);
+out2 = pulse(12000,1e-7, tes2, 1000, 2000);
 # Get all the linear parameters for the irwin hilton model
 lintes = IrwinHiltonTES(tes)
 # Calculate the noise and the 4 components in the IrwinHilton model
@@ -27,7 +27,11 @@ f = logspace(0,6,100);
 n,n1,n2,n3,n4 = noise(lintes, f);
 
 # Calculate a stochastic noise 1000 eV pulse with 12000 samples and 2000 presmples
+# not validated
 outstochastic = stochastic(12000,1e-7, tes, 1000,2000);
+
+# calculate the complex impedance of the TES
+z = ModelTES.Z(lintes,f)
 
 figure()
 title("stochastic pulse and noiseless pulse")
@@ -47,4 +51,8 @@ loglog(f,n4,label="Amplifier")
 loglog(f,n,label="Total noise PSD", lw=2)
 xlabel("Frequency (Hz)"); ylabel("Noise Power (A\$^2\$/Hz)")
 legend(loc="best")
+figure()
+plot(real.(z), imag.(z))
+xlabel("real(z)")
+ylabel("imag(z)")
 ```
