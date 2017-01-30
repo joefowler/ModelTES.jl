@@ -163,7 +163,7 @@ function getlinearparams(bt::BiasedTES)
    p = bt.p
    R0 = getR0(bt)
    G0 = getG0(bt)
-   drdi,drdt = ForwardDiff.gradient(f,[bt.I0, bt.T0])
+   drdi,drdt = ForwardDiff.gradient(f, [bt.I0, bt.T0])
    alpha = drdt*bt.T0/R0
    beta = drdi*bt.I0/R0
    PJ = bt.I0^2*R0
@@ -171,7 +171,7 @@ function getlinearparams(bt::BiasedTES)
    tauthermal = p.C/G0
    taucc = tauthermal/(1-loopgain) # constant current time constant
    r = p.Rl/R0
-   taueff = (1+beta+r)/(1+beta+r+(1-r)*loopgain) # zero inductance effecticve thermal time constant
+   taueff = (1+beta+r)/(1+beta+r+(1-r)*loopgain) # zero inductance effective thermal time constant
    tauelectrical = p.L/(p.Rl+R0*(1+beta))
    invtau = 1/(2*tauelectrical)+1/(2*taucc)
    a = (1/tauelectrical-1/taucc)^2
