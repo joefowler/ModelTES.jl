@@ -48,6 +48,7 @@ function ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn)
     ShankRIT(Tw,A)
 end
 
+
 type BiasedTES{T}
     p::TESParams{T}
     I0::Float64 # intial current for diff eq, aka current through TES (A)
@@ -85,7 +86,7 @@ end
 
 
 "Created a biased tes with quiescent state resistance R0"
-function BiasedTES{T<:ShankRIT}(p::TESParams{T}, R0::Float64)
+function BiasedTES{T}(p::TESParams{T}, R0::Float64)
    @assert 0 < R0 < p.Rn
    I0, T0, V = initialconditions(p,R0)
    BiasedTES(p,I0,T0,V)
@@ -176,7 +177,7 @@ function getlinearparams(bt::BiasedTES)
    invtau = 1/(2*tauelectrical)+1/(2*taucc)
    a = (1/tauelectrical-1/taucc)^2
    b = -4*(R0/p.L)*loopgain*(2+beta)/tauthermal
-   invtaupm = 0.5*sqrt(a+b)
+   invtaupm = 0.5*sqrt(a+b+0*im) # make it complex, so I can get a complex answer
    tauplus = 1/(invtau+invtaupm)
    tauminus = 1/(invtau-invtaupm)
    c = loopgain*(3+beta-r)+(1+beta+r)
@@ -206,8 +207,8 @@ type IrwinHiltonTES
    taucc::Float64 #τI
    taueff::Float64
    tauelectrical::Float64 #τel
-   tauplus::Float64
-   tauminus::Float64
+   tauplus::Complex{Float64}
+   tauminus::Complex{Float64}
    lcritplus::Float64
    lcritminus::Float64
 end
@@ -392,7 +393,7 @@ function adaptive_solve(bt::BiasedTES, dt::Float64, tspan::Tuple{Float64,Float64
     prob = ODEProblem(bt, u0, tspan)
     sol = solve(prob,method,dt=dt,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false)
 end
-
+"pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)"
 function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::Int=0; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)
     u0 = [bt.T0+E*ModelTES.J_per_eV/bt.p.C, bt.I0]
     saveat = range(0,dt, nsample-npresamples)
@@ -406,7 +407,8 @@ function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples:
     I[npresamples+1:end] = sol[:,2]
     T[1:npresamples]=bt.T0
     I[1:npresamples]=bt.I0
-    TESRecord(T,I, R(I,T,bt.p),dt)
+    Rout = [R(I[i],T[i],bt.p) for i=1:length(T)]
+    TESRecord(T,I, Rout,dt)
 end
 
 end # module
