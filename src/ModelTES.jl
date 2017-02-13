@@ -383,8 +383,9 @@ function rk8(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples::I
         T[i] = y[1]
         I[i] = y[2]
     end
+    Rout = [R(I[i],T[i],bt.p) for i=1:length(T)]
 
-    TESRecord(T, I, R(I,T,bt.p), dt)
+    TESRecord(T, I, Rout, dt)
 end
 
 # example of using the DifferentialEquations API to solve the relevant equations
