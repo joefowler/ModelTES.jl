@@ -15,6 +15,7 @@ export
 using Roots, ForwardDiff, DifferentialEquations
 include("rk8.jl")
 include("tes_models.jl")
+include("tes_noise.jl")
 
 const J_per_eV = 1.602177e-19 #unitless
 const kb = 1.38064852e-23 #k boltzmann (J/K)
@@ -249,8 +250,6 @@ end
 isoverdamped(tes::IrwinHiltonTES) = (isreal(tes.tauplus) && isreal(tes.tauminus) &&
                                     tes.tauplus<tes.tauminus)
 isunderdamped(tes::IrwinHiltonTES) = (!isoverdamped(tes) && tes.tauplus!=tes.tauminus)
-
-include("TESNoise.jl")
 
 
 # -- Everything below here has something to do with stochastic modeling. So, wouldn't it make sense to
