@@ -412,4 +412,20 @@ function pulse(nsample::Int, dt::Float64, bt::BiasedTES, E::Number, npresamples:
     TESRecord(T,I, Rout,dt)
 end
 
+function pulses(nsample::Int, dt::Float64, bt::BiasedTES, Es::Vector, arrivaltimes::Vector; dtsolver=1e-9, method=DifferentialEquations.Tsit5(), abstol=1e-9, reltol=1e-9)
+  u0 = [bt.T0, bt.I0]
+  saveat = range(0,dt, nsample)
+  prob = ODEProblem(bt, u0, (0.0, last(saveat)))
+  Esdict = Dict([(at,E) for (at,E) in zip(arrivaltimes,Es)])
+  cb = DiscreteCallback((t,u,integrator)->t in arrivaltimes, integrator->integrator.u[1]+=Esdict[integrator.t]*ModelTES.J_per_eV/bt.p.C, (true,true))
+  sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false;callback=cb, tstops=arrivaltimes)
+  # npresamples+1 is the point at which initial conditions hold (T differs from T0) (sol[1])
+  # npresamples+2 is the first point at which I differs from I0
+
+  T = sol[:,1]
+  I = sol[:,2]
+  Rout = [R(I[i],T[i],bt.p) for i=1:length(T)]
+  TESRecord(T,I, Rout,dt)
+end
+
 end # module
