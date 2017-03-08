@@ -1,4 +1,5 @@
 using Polynomials
+using ARMA
 
 "Returns (noise, A,B,C,D) where `noise` is a noise power spectral
 density in A^2 per Hz, at each input frequency (Hz) given by `freq`.
