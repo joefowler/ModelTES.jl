@@ -53,7 +53,7 @@ out2 = pulse(12000,1e-7, tes2, 1000, 2000);
 outstochastic = stochastic(12000,1e-7, tes, 1000,2000);
 
 # many pulses in one trace
-outmany = ModelTES.pulses(12000,1e-7, tes2, [1000,1000,2000,3000,1000,500,2000], collect(1:7)*1e-3);
+outmany = ModelTES.pulses(12000,1e-7, tes2, [1000,1000,2000,3000,1000,500,2000], collect(1:7)*1.7e-4);
 
 # make the other tess in tes_models
 ModelTES.lowEpix()
