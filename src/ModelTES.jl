@@ -15,8 +15,6 @@ export
 using Roots, ForwardDiff, DifferentialEquations
 include("rk8.jl")
 include("tes_models.jl")
-include("tes_noise.jl")
-include("stochastic_integration.jl")
 
 const J_per_eV = 1.602177e-19 #unitless
 const kb = 1.38064852e-23 #k boltzmann (J/K)
@@ -235,7 +233,7 @@ end
 Returns the impedance of the `tes` at frequency `f`.
 Implements equation 42 of Irwin-Hilton chapter."
 function Z(tes::IrwinHiltonTES, f)
-  ω=2πf
+  ω=2π*f
   tes.R0*(1+tes.beta) +tes.R0*tes.loopgain*(2+tes.beta)./((1-tes.loopgain)*(1+im*ω*tes.taucc))
 end
 
@@ -243,10 +241,12 @@ end
 
 Retyrns impedance of complete circuit of `tes` at frequency `f`."
 function Zcircuit(tes::IrwinHiltonTES, f)
-  ω=2πf
+  ω=2π*f
   tes.R0 + im*ω*tes.L + Z(tes,ω)
 end
 
+include("tes_noise.jl")
+include("stochastic_integration.jl")
 
 isoverdamped(tes::IrwinHiltonTES) = (isreal(tes.tauplus) && isreal(tes.tauminus) &&
                                     tes.tauplus<tes.tauminus)
