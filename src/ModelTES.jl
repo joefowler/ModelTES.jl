@@ -343,10 +343,13 @@ function pulses(nsample::Int, dt::Float64, bt::BiasedTES, Es::Vector, arrivaltim
   saveat = range(0,dt, nsample)
   prob = ODEProblem(bt, u0, (0.0, last(saveat)))
   Esdict = Dict([(at,E) for (at,E) in zip(arrivaltimes,Es)])
+  # this defines a callback that is evaluated when t equals a value in arrival times
+  # when evaluated it discontinuously changes the temperature (u[1])
+  # the last (true,true) argument has to do with which points are saved
+  # it doesn't appear to add extra points beyond saveat, so maybe save_timeseries overrides it?
   cb = DiscreteCallback((t,u,integrator)->t in arrivaltimes, integrator->integrator.u[1]+=Esdict[integrator.t]*ModelTES.J_per_eV/bt.p.C, (true,true))
+  # tstops is used to make sure the integrator checks each time in arrivaltimes
   sol = solve(prob,method,dt=dtsolver,abstol=abstol,reltol=reltol, saveat=saveat, save_timeseries=false, dense=false;callback=cb, tstops=arrivaltimes)
-  # npresamples+1 is the point at which initial conditions hold (T differs from T0) (sol[1])
-  # npresamples+2 is the first point at which I differs from I0
 
   T = sol[:,1]
   I = sol[:,2]
