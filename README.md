@@ -2,19 +2,24 @@
 
 [![Build Status](https://travis-ci.org/ggggggggg/ModelTES.jl.svg?branch=master)](https://travis-ci.org/ggggggggg/ModelTES.jl)
 
-This package is intended to simulate TES microcalorimeter pulses in both the linear and non-linear regime. It's not really
-intended for wide use, but feel free to play with it if you want. There may be no support, but can try opening and issue and
-hope.
+This package is intended to simulate TES microcalorimeter pulses in both the linear and non-linear
+regime. It's not really intended for wide use, but feel free to play with it if you want. There may
+be no support, but can try opening and issue and hope.
 
-Here is an example of what you can do
+The physics model is based on the article "Transition-Edge Sensors" by
+K.D. Irwin and G.C. Hilton in _Cryogenic Particle Detection_ pages 63-150,
+Volume 99 of the series _Topics in Applied Physics_ (2005). Find it at
+[doi:10.1007/10933596_3](http://doi.org/10.1007/10933596_3).
+
+Here are some examples of what you can do:
 
 ```julia
 using ModelTES, PyPlot
 # Create a high-E TES design
 stdTES = ModelTES.highEpix()
-# Create a Biased TES from the 48 nanohentry Holmes paramters with 0.2*Rn resistance
+# Create a Biased TES from the 48 nanohenry Holmes parameters with 0.2*Rn resistance
 tes =  ModelTES.pholmes(48e-9, 0.20)
-# Create a Biased TES from the 48 nanohentry Holmes paramters with 0.4*Rn resistance
+# Create a Biased TES from the 48 nanohenry Holmes parameters with 0.4*Rn resistance
 tes2 = ModelTES.pholmes(48e-9, 0.40)
 # Integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples
 out = pulse(12000,1e-7, tes, 1000, 2000);
@@ -22,12 +27,17 @@ out = pulse(12000,1e-7, tes, 1000, 2000);
 out2 = pulse(12000,1e-7, tes2, 1000, 2000);
 # Get all the linear parameters for the irwin hilton model
 lintes = IrwinHiltonTES(tes)
-# Calculate the noise and the 4 components in the IrwinHilton model
+# Calculate the noise PSD and its 4 components in the Irwin-Hilton model
 f = logspace(0,6,100);
-n,n1,n2,n3,n4 = noise(lintes, f);
+n,n1,n2,n3,n4 = ModelTES.noisePSD(lintes, f);
+sampleTime = 1e-6;
+nmodel = NoiseModel(tes, sampleTime);
+psd = noise_psd(nmodel, f);
+covar = model_covariance(nmodel, 100)
+
 
 # Calculate a stochastic noise 1000 eV pulse with 12000 samples and 2000 presmples
-# not validated
+# !! Warning: `stochastic` is not validated.
 outstochastic = stochastic(12000,1e-7, tes, 1000,2000);
 
 # calculate the complex impedance of the TES
