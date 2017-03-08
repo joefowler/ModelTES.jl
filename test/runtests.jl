@@ -59,5 +59,11 @@ ModelTES.highEpix()
 ModelTES.pholmes(50e-9)
 tesL = ModelTES.LCLSII(100e-9)
 
+# Compute the noise spectrum etc.
+nmodel = NoiseModel(tesL, 1e-6)
+freq = linspace(0, 5e5, 50)
+psd = model_psd(nmodel, freq)
+covar = model_covariance(nmodel, 20)
+
 
 include("ihtes.jl")

@@ -1,8 +1,17 @@
 module ModelTES
-export transitionwidth, BiasedTES, TESParams, getlinearparams,
-    noise, ARMAmodel, ARMApowerspectrum, ARMAcovariance,
-    generateARMAnoise,
-    TESRecord, times, rk8, IrwinHiltonTES, stochastic, pulse
+export
+    transitionwidth,
+    BiasedTES,
+    TESParams,
+    getlinearparams,
+    NoiseModel,
+    TESRecord,
+    times,
+    rk8,
+    IrwinHiltonTES,
+    stochastic,
+    pulse
+
 using Roots, ForwardDiff, DifferentialEquations
 include("rk8.jl")
 include("tes_models.jl")
@@ -219,21 +228,27 @@ function IrwinHiltonTES(tes::BiasedTES)
     IrwinHiltonTES(linearparams...)
 end
 
-"Z(tes::IrwinHiltonTES, f) iPmpedance of the `tes` at  frequency `f`, implements equation 42 of Irwin-Hilton chapter."
+"`Z(tes::IrwinHiltonTES, f)`
+
+Returns the impedance of the `tes` at frequency `f`.
+Implements equation 42 of Irwin-Hilton chapter."
 function Z(tes::IrwinHiltonTES, f)
-  ω=2*π*f
+  ω=2πf
   tes.R0*(1+tes.beta) +tes.R0*tes.loopgain*(2+tes.beta)./((1-tes.loopgain)*(1+im*ω*tes.taucc))
 end
 
-"Zcircuit(tes::IrwinHiltonTES, f) impedance of complete circuit of `tes` at frequency `f`."
+"`Zcircuit(tes::IrwinHiltonTES, f)`
+
+Retyrns impedance of complete circuit of `tes` at frequency `f`."
 function Zcircuit(tes::IrwinHiltonTES, f)
-  ω=2*π*f
+  ω=2πf
   tes.R0 + im*ω*tes.L + Z(tes,ω)
 end
 
 
-isoverdamped(tes::IrwinHiltonTES) = isreal(tes.tauplus) && isreal(tes.tauminus) && tes.tauplus<tes.tauminus
-isunderdamped(tes::IrwinHiltonTES) = !isoverdamped(tes) && tes.tauplus!=tes.tauminus
+isoverdamped(tes::IrwinHiltonTES) = (isreal(tes.tauplus) && isreal(tes.tauminus) &&
+                                    tes.tauplus<tes.tauminus)
+isunderdamped(tes::IrwinHiltonTES) = (!isoverdamped(tes) && tes.tauplus!=tes.tauminus)
 
 include("TESNoise.jl")
 

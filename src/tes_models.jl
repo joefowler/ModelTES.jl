@@ -49,7 +49,7 @@ end
 "Plot a noise power spectral density for 5 TES model systems.
 For one, plot the 4 components from the Irwin-Hiltom model."
 function noise_power_demo(SI_amp=5e-22)
-    using PyPlot
+    # You must be "using PyPlot" to run this.
     models = Dict(
         :LowE=>lowEpix(),
         :HighE=>highEpix(),
@@ -63,7 +63,7 @@ function noise_power_demo(SI_amp=5e-22)
     freq = logspace(1, 6, 50);
     for m in (:LowE, :HighE, :Holmes12, :Holmes24, :Holmes48)
         model = IrwinHiltonTES(models[m])
-        psd,N1,N2,N3,N4 = noise(model, freq, SI_amp)
+        psd,N1,N2,N3,N4 = noisePSD(model, freq, SI_amp)
         loglog(freq,psd, color=colors[m], label = string(m))
         if m==:HighE
             loglog(freq, N1, "--", color=colors[m], label="HighE TES")
