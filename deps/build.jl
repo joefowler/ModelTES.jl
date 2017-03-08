@@ -1,5 +1,7 @@
 println("running ModelTES build.jl: "*@__FILE__)
 
+"installed(s::String)
+If the package whose name is `s` is installed return `true`, otherwise return `false`."
 function installed(s::String)
   try
     a=Pkg.installed(s)
