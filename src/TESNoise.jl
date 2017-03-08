@@ -8,15 +8,16 @@ In order, they are TES Johnson noise; load resistor Johnson noise;
 thermal fluctuation noise; and amplifier noise.
 
 You can input the amplifier current noise `SI_amp`, in A^2/Hz, or you
-can take the default value.
-"
-function noise(tes::IrwinHiltonTES, freq::Vector{Float64}, SI_amp=5e-22)
-    const F  = 1 # this term goes from 0 to one and depends on wether the thermal conductivity is ballaistic or diffusive, hardcoded as 1 for now
-    SP_TFN = 4*kb*tes.T0^2*tes.G0*F
-    SV_TES = 4*kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
-    SV_L   = 4*kb*tes.T0*tes.Rl  # Load voltage noise
+can take the default value."""
+function noisePSD(tes::IrwinHiltonTES, freq::Vector{Float64}, SI_amp=5e-22)
+    # This term F goes from 0 to one and depends on whether the thermal conductivity is ballistic
+    # or diffusive, hardcoded as 1 for now
+    const F  = 1
+    SP_TFN = 4kb*tes.T0^2*tes.G0*F
+    SV_TES = 4kb*tes.T0*tes.R0*(1+2*tes.beta) # TES voltage noise
+    SV_L   = 4kb*tes.T0*tes.Rl  # Load voltage noise
 
-    omega = 2*pi*freq  # Radians / sec
+    omega = 2pi*freq  # Radians / sec
     sIomeg = (1-tes.tauplus/tes.taucc)*(1-tes.tauminus/tes.taucc)./((1+im*omega*tes.tauplus).*(1+im*omega*tes.tauminus)) /(tes.I0*tes.R0*(2+tes.beta))
     sIomeg2 = abs2(sIomeg)
 

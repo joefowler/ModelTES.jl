@@ -19,7 +19,7 @@ ihtes = IrwinHiltonTES(bt)
 @test L == ihtes.L
 
 f = logspace(0,6,100);
-n,n1,n2,n3,n4 = noise(ihtes, f);
+n,n1,n2,n3,n4 = ModelTES.noisePSD(ihtes, f);
 z = ModelTES.Z(ihtes,f)
 zcircuit = ModelTES.Zcircuit(ihtes,f)
 

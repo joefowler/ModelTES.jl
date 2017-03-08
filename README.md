@@ -22,9 +22,9 @@ out = pulse(12000,1e-7, tes, 1000, 2000);
 out2 = pulse(12000,1e-7, tes2, 1000, 2000);
 # Get all the linear parameters for the irwin hilton model
 lintes = IrwinHiltonTES(tes)
-# Calculate the noise and the 4 components in the IrwinHilton model
+# Calculate the noise PSD and its 4 components in the IrwinHilton model
 f = logspace(0,6,100);
-n,n1,n2,n3,n4 = noise(lintes, f);
+n,n1,n2,n3,n4 = ModelTES.noisePSD(lintes, f);
 
 # Calculate a stochastic noise 1000 eV pulse with 12000 samples and 2000 presmples
 # not validated
