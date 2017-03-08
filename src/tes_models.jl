@@ -23,7 +23,6 @@ function lowEpix()
     bt = BiasedTES(tes_param, R0)
 end
 
-
 """Return a BiasedTES object containing parameters for Kelsey's high-E TES model"""
 function highEpix()
     Tc=0.107; Tbath = 0.065
@@ -44,38 +43,4 @@ function LCLSII(L=52e-9)
     model = ModelTES.ShankRIT(alpha, beta, n, Tc, Tbath, k, R0, Rn);
     tes_param = TESParams(n,Tc,Tbath,k,C,L,Rl,Rpara,Rn,model)
     bt = BiasedTES(tes_param, R0)
-end
-
-"Plot a noise power spectral density for 5 TES model systems.
-For one, plot the 4 components from the Irwin-Hiltom model."
-function noise_power_demo(SI_amp=5e-22)
-    using PyPlot
-    models = Dict(
-        :LowE=>lowEpix(),
-        :HighE=>highEpix(),
-        :Holmes12=>pholmes(12e-9),
-        :Holmes24=>pholmes(24e-9),
-        :Holmes48=>pholmes(48e-9))
-    colors=Dict(:HighE=>"r", :LowE=>"gold",
-        :Holmes12=>"purple",:Holmes24=>"blue",:Holmes48=>"green");
-
-    clf()
-    freq = logspace(1, 6, 50);
-    for m in (:LowE, :HighE, :Holmes12, :Holmes24, :Holmes48)
-        model = IrwinHiltonTES(models[m])
-        psd,N1,N2,N3,N4 = noise(model, freq, SI_amp)
-        loglog(freq,psd, color=colors[m], label = string(m))
-        if m==:HighE
-            loglog(freq, N1, "--", color=colors[m], label="HighE TES")
-            loglog(freq, N2, ":", color=colors[m], label="HighE Load")
-            loglog(freq, N3, "-.", color=colors[m], label="HighE TFN")
-            loglog(freq, N4, "--", color="orange", label="HighE ampl")
-        end
-    end
-    xlabel("Frequency (Hz)")
-    ylabel("Noise power (A\$^2\$/Hz)")
-    title("Noise Power Spectrum for several TES models")
-    ylim([.3*SI_amp,3e-20+SI_amp])
-    legend(loc="best")
-    grid(true)
 end

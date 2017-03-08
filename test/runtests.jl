@@ -1,4 +1,4 @@
-using ModelTES
+using ModelTES, ARMA
 using Base.Test
 
 # Create a high-E TES design
@@ -44,8 +44,6 @@ out_pulse_ts2 = pulse(120,1e-5, tes, 1000,0);
 out_ts2 = ModelTES.TESRecord(out_for_resample.T[1:100:end], out_for_resample.I[1:100:end], out_for_resample.R[1:100:end], 1e-5)
 @test worst_relative_error(out_ts2,out_pulse_ts2)<1e-5
 
-
-
 # Integrate a pulse with 12000 samples, 1e-7 second spacing, 1000 eV energy, 2000 presamples from the higher biased version of the same tes
 out2 = pulse(12000,1e-7, tes2, 1000, 2000);
 
@@ -56,9 +54,18 @@ outstochastic = stochastic(12000,1e-7, tes, 1000,2000);
 outmany = ModelTES.pulses(12000,1e-7, tes2, [1000,1000,2000,3000,1000,500,2000], collect(1:7)*1.7e-4);
 @test length(times(outmany))==length(outmany.I)
 
-# make the other tess in tes_models
+
+# Make the other TESs in tes_models.jl
 ModelTES.lowEpix()
+ModelTES.highEpix()
 ModelTES.pholmes(50e-9)
+tesL = ModelTES.LCLSII(100e-9)
+
+# Compute the noise spectrum etc.
+nmodel = NoiseModel(tesL, 1e-6)
+freq = linspace(0, 5e5, 50)
+psd = model_psd(nmodel, freq)
+covar = model_covariance(nmodel, 20)
 
 
 include("ihtes.jl")
