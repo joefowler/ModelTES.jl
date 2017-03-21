@@ -35,7 +35,8 @@ nheat = 50000
 dtheat = dt*nheat
 noff = 50000
 joint = biaspulse(bt, Vratio, dt, npre, nheat, noff)
-P = [joint.I[i]^2*joint.R[i] for i=1:length(joint.I)]
+Piv = [joint.I[i]^2*joint.R[i] for i=1:length(joint.I)]
+Plegs = bt.p.k*(joint.T.^bt.p.n-bt.p.Tbath^bt.p.n)
 V = cat(1,fill(bt.V,npre), fill(bt.V*Vratio, nheat), fill(bt.V, noff))
 Rshunt = bt.p.Rl-bt.p.Rp
 Ibias = V/Rshunt
@@ -49,23 +50,25 @@ pulseref = pulse(length(joint.I), dt, bt, Eref , j)
 
 figure(figsize=(16,10))
 subplot(221)
-plot(times(joint),joint.I,label="heater",lw=2)
+plot(times(joint),joint.I,label="bias pulse",lw=2)
 plot(times(pulseref),pulseref.I,label="$(format(Eref, precision=2)) eV",lw=2)
 xlabel("time (s)")
 ylabel("TES current (A)")
 legend(loc="best")
 
 subplot(222)
-plot(times(joint),joint.T,label="heater",lw=2)
+plot(times(joint),joint.T,label="bias pulse",lw=2)
 plot(times(pulseref),pulseref.T,label="$(format(Eref, precision=2))  eV",lw=2)
 xlabel("time (s)")
 ylabel("TES temp (K)")
 legend(loc="best")
 
 subplot(223)
-plot(times(joint), P,lw=2)
+plot(times(joint), Piv,lw=2, label="IV")
+plot(times(joint), Plegs,lw=2, label="legs")
 xlabel("time (s)")
-ylabel("TES IV power (W)")
+ylabel("TES power (W)")
+legend(loc="best")
 
 subplot(224)
 plot(times(joint), Ibias, lw=2)
