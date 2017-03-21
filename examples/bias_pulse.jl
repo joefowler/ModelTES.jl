@@ -74,3 +74,30 @@ subplot(224)
 plot(times(joint), Ibias, lw=2)
 xlabel("time (s)")
 ylabel("Room temperatue bias current (A)")
+
+
+#calculate pulseheight change vs Tbath for bias pulse and normal pulse
+dT = 0.001
+Tbs = linspace(bt.p.Tbath-dT, bt.p.Tbath+dT,100)
+function newbt(Tbath, bt)
+  bt0 = deepcopy(bt)
+  bt0.p.Tbath = Tbath
+  r=pulse(10,1e-1, bt0, 0)
+  return ModelTES.BiasedTES(bt0.p, r.I[end], r.T[end], bt0.V)
+end
+bts = [newbt(Tbath, bt) for Tbath in Tbs]
+@assert all([bt.V for bt in bts].==bt.V)
+
+bias_pulses = [biaspulse(bt, Vratio, dt, npre, nheat, noff) for bt in bts]
+normal_pulses = [pulse(length(joint.I), dt, bt, Eref, j) for bt in bts]
+ph_bias_pulses = [minimum(record.I)-record.I[1] for record in bias_pulses]
+ph_normal_pulses = [minimum(record.I)-record.I[1] for record in normal_pulses]
+
+ph_bias_ref = minimum(joint.I)-joint.I[1]
+ph_normal_ref = minimum(pulseref.I)-pulseref.I[1]
+figure()
+plot(Tbs, ph_bias_pulses./ph_bias_ref,label="bias pulse", lw=2)
+plot(Tbs, ph_normal_pulses./ph_normal_ref,label="$(format(Eref, precision=2))  eV",lw=2)
+xlabel("Tbath (K)")
+ylabel("fractional peakheight change")
+legend(loc="best")
